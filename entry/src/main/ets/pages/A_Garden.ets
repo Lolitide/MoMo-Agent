@@ -1,0 +1,895 @@
+/*
+ * ============================================================================
+ * 文件名：pages/A_Garden.ets
+ * ============================================================================
+ * 【用途】一级 Tab「记忆花园」：以三种视图展示记忆——
+ *   GARDEN（花园场景 + 节点标记 + 详情浮窗）、OUTLINE（记忆大纲列表）、
+ *   TREE（MemoryTreeGraph 记忆树），以及搜索浮窗、模式菜单(ModeMenu)、编辑浮窗、
+ *   缩放浮钮（树模式 ±）。
+ * 【前置条件 / 假设】
+ *   - 依赖：MemoryRepository(订阅制)、GardenController（被 MainPage HDS 菜单调用）、
+ *     ShellState.gardenScroller（滚动绑定）、MockData 默认记忆；
+ *   - 假设：详情面板/工具栏被“全屏容器”包裹时用 hitTestBehavior 放行点击；
+ *     编辑浮窗与搜索/菜单浮窗均为“打开时挂载”，关闭不渲染。
+ * 【输入 / 输出（后置条件）】
+ *   - 输入：HDS 菜单按钮（搜索/更多）、模式菜单选择、节点/列表点击、搜索关键字、
+ *     编辑提交、缩放按钮、拖动收起详情；
+ *   - 输出：视图切换（switchMode）、选中记忆详情面板（selectMemory/closeDetail）、
+ *     树缩放(treeZoom)、编辑写回 MemoryRepository、搜索过滤(filtered)。
+ * 【关键类 / 算法】
+ *   - A_Garden：视图分发（mode 枚举 -> gardenView/outlineView/treeView）；
+ *   - GardenNodeMarker：节点标记列；MemoryTreeGraph：树绘制；TreeLayout：树布局算法；
+ *   - detailH：详情面板高度（拖动收起，吸附 196/372 等档位）。
+ * 【参考源】
+ *   - HarmonyLearn（知识图谱/树的绘制思路）；Examples/ArkUISample；
+ *     MoMo_DOC/UI 参考图（花园首页稿）
+ * ============================================================================
+ */
+import { MemoryRepository } from '../repository/Repositories';
+import { GardenController } from '../service/Services';
+import { MockData } from '../mock/MockData';
+import {
+  GardenMode, GardenNodeItem, Memory, MemoryTreeNode, MemoryType, MemoryTypeUtil, PageState
+} from '../model/Models';
+import { DateUtil } from '../utils/DateUtil';
+import { Theme } from '../utils/Theme';
+import { PromptUtil } from '../utils/PromptUtil';
+import { DeviceUtil } from '../utils/DeviceUtil';
+import { ShellState } from '../service/Services';
+import { ModeMenu } from '../components/ModeMenu';
+import { GardenNodeMarker } from '../components/GardenNodeMarker';
+import { MemoryTreeGraph } from '../components/MemoryTreeGraph';
+import { GlassSheet } from '../components/GlassSheet';
+import { LoadingState, EmptyState } from '../components/StateViews';
+
+@Component
+export struct A_Garden {
+  @State pageState: PageState = PageState.LOADING;
+  @State mode: GardenMode = GardenMode.GARDEN;
+  @State memories: Memory[] = [];
+  @State selectedMemory: Memory | null = null;
+  @State detailH: number = 196;
+  @State menuOpen: boolean = false;
+  @State searchOpen: boolean = false;
+  @State searchText: string = '';
+  @State editOpen: boolean = false;
+  @State undoStack: string[] = [];
+  @State redoStack: string[] = [];
+  @State treeZoom: number = 1;
+  @State outlineScroll: number = 0;
+  @State editTitle: string = '';
+  @State editTags: string = '';
+  @State editSummary: string = '';
+  private repo: MemoryRepository = MemoryRepository.get();
+  private nodes: GardenNodeItem[] = MockData.buildGardenNodes();
+  private repoListener: () => void = () => {
+  };
+  private panBase: number = 196;
+  private gardenScroller: Scroller = ShellState.gardenScroller;
+
+  // 生命周期：注册仓库监听（记忆变化重载）、HDS 菜单桥（搜索/更多/收起详情）、
+  // 400ms 后读取初始记忆并默认选中 m4 打开详情面板
+  aboutToAppear(): void {
+    if (GardenController.modeOverride >= 0) {
+      this.mode = GardenController.modeOverride as GardenMode;
+      GardenController.modeOverride = -1;
+    }
+    this.repoListener = () => {
+      this.memories = this.repo.getAll();
+      if (this.selectedMemory !== null) {
+        const found = this.repo.getById(this.selectedMemory.id);
+        if (found === null) {
+          this.selectedMemory = null;
+          this.detailH = 196;
+        }
+      }
+    };
+    this.repo.subscribe(this.repoListener);
+    GardenController.closeDetail = () => {
+      this.selectedMemory = null;
+      this.detailH = 196;
+    };
+    GardenController.openSearch = () => {
+      this.searchOpen = true;
+    };
+    GardenController.openMenu = () => {
+      this.menuOpen = true;
+    };
+    setTimeout(() => {
+      this.memories = this.repo.getAll();
+      this.pageState = PageState.SUCCESS;
+      const first = this.repo.getById('m4');
+      if (first !== null) {
+        this.selectedMemory = first;
+        this.detailH = 372;
+      }
+    }, 400);
+  }
+
+  aboutToDisappear(): void {
+    this.repo.unsubscribe(this.repoListener);
+    GardenController.closeDetail = () => {
+    };
+    GardenController.openSearch = () => {
+    };
+    GardenController.openMenu = () => {
+    };
+  }
+
+  private sel(): Memory {
+    return this.selectedMemory as Memory;
+  }
+
+  private nodePosOf(mem: Memory): GardenNodeItem {
+    for (let i = 0; i < this.nodes.length; i++) {
+      if (this.nodes[i].memoryId === mem.id) {
+        return this.nodes[i];
+      }
+    }
+    let h1 = 0;
+    let h2 = 0;
+    for (let i = 0; i < mem.id.length; i++) {
+      h1 = (h1 * 31 + mem.id.charCodeAt(i)) % 997;
+      h2 = (h2 * 43 + mem.id.charCodeAt(i)) % 991;
+    }
+    const n = new GardenNodeItem();
+    n.id = 'auto-' + mem.id;
+    n.memoryId = mem.id;
+    n.x = 12 + (h1 % 60);
+    n.y = 32 + (h2 % 30);
+    return n;
+  }
+
+  // 选中记忆：打开详情面板（detailH 吸附高度）+ 更新编辑浮窗数据源
+  private selectMemory(m: Memory): void {
+    this.selectedMemory = m;
+    animateTo({ duration: 260, curve: Curve.EaseOut }, () => {
+      this.detailH = 372;
+    });
+  }
+
+  // 视图切换入口（花园/大纲/树）：同步 mode 与记忆加载状态（树模式需要构建树数据）
+  private switchMode(m: GardenMode): void {
+    this.menuOpen = false;
+    if (m === this.mode) {
+      return;
+    }
+    this.mode = m;
+    this.selectedMemory = null;
+    this.detailH = 196;
+  }
+
+  private sortedMemories(): Memory[] {
+    const arr = this.memories.slice();
+    arr.sort((a: Memory, b: Memory) => {
+      if (a.date === b.date) {
+        return 0;
+      }
+      return a.date < b.date ? 1 : -1;
+    });
+    return arr;
+  }
+
+  private buildTree(): MemoryTreeNode {
+    const root = new MemoryTreeNode();
+    root.id = 'root';
+    root.title = '记忆花园';
+    root.type = 'root';
+    const gNames: string[] = ['生活', '学习', '兴趣', '目标', '重要回忆'];
+    const gKeys: MemoryType[] = [MemoryType.LIFE, MemoryType.STUDY, MemoryType.INTEREST, MemoryType.GOAL, MemoryType.IMPORTANT];
+    const groups: MemoryTreeNode[] = [];
+    for (let g = 0; g < 5; g++) {
+      const group = new MemoryTreeNode();
+      group.id = 'group-' + g.toString();
+      group.title = gNames[g];
+      group.type = 'group';
+      group.parentId = 'root';
+      for (let i = 0; i < this.memories.length; i++) {
+        if (this.memories[i].type === gKeys[g]) {
+          const mn = new MemoryTreeNode();
+          mn.id = this.memories[i].id;
+          mn.title = this.memories[i].title;
+          mn.type = 'memory';
+          mn.parentId = group.id;
+          group.children.push(mn);
+        }
+      }
+      groups.push(group);
+    }
+    root.children = groups;
+    return root;
+  }
+
+  private filtered(): Memory[] {
+    const q = this.searchText.trim().toLowerCase();
+    const out: Memory[] = [];
+    for (let i = 0; i < this.memories.length; i++) {
+      const m = this.memories[i];
+      const hay = (m.title + ' ' + m.summary + ' ' + m.date + ' ' + m.tags.join(' ') + ' ' + m.content).toLowerCase();
+      if (q === '' || hay.includes(q)) {
+        out.push(m);
+      }
+    }
+    return out;
+  }
+
+  private openDeleteConfirm(): void {
+    if (this.selectedMemory === null) {
+      return;
+    }
+    AlertDialog.show({
+      title: '删除记忆',
+      message: '确定删除「' + this.selectedMemory.title + '」吗？花园、大纲、记忆树会同步更新。',
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: '#E5533D',
+        action: () => {
+          if (this.selectedMemory === null) {
+            return;
+          }
+          const title = this.selectedMemory.title;
+          this.repo.delete(this.selectedMemory.id);
+          this.undoStack = this.undoStack.concat(['删除「' + title + '」']);
+          this.redoStack = [];
+          this.selectedMemory = null;
+          this.detailH = 196;
+          PromptUtil.toast('已删除「' + title + '」');
+        }
+      }
+    });
+  }
+
+  @Builder
+  gardenView() {
+    Stack({ alignContent: Alignment.Top }) {
+      Image($r('app.media.garden_bg'))
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .opacity(0.96)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      ForEach(this.memories, (m: Memory) => {
+        Column() {
+          GardenNodeMarker({
+            memory: m,
+            selected: this.selectedMemory !== null && this.selectedMemory.id === m.id,
+            onTap: (mm: Memory) => {
+              this.selectMemory(mm);
+            }
+          })
+        }
+        .position({
+          x: this.nodePosOf(m).x + '%',
+          y: this.nodePosOf(m).y + '%'
+        })
+        .translate({ x: -38, y: -30 })
+      }, (m: Memory) => m.id)
+
+      if (this.memories.length === 0) {
+        EmptyState({
+          text: '花园还是空的，点击右下角 + 种下第一颗记忆种子',
+          icon: $r('sys.symbol.flower')
+        })
+      }
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  outlineView() {
+    Scroll(this.gardenScroller) {
+      Column({ space: 0 }) {
+        Blank().height(100)
+        ForEach(this.sortedMemories(), (m: Memory) => {
+          Row() {
+            Column() {
+              Row()
+                .width(12).height(12).borderRadius(6)
+                .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                  ? '#5FC77E' : '#B9DCC4')
+              Row().width(2).height(184)
+                .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                  ? 'rgba(95,199,126,0.5)' : '#DCE9DF')
+            }
+            .width(40)
+            .alignItems(HorizontalAlign.Center)
+
+            Column({ space: 10 }) {
+              Text(m.date)
+                .fontSize(15)
+                .fontWeight(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                  ? FontWeight.Bold : FontWeight.Medium)
+                .fontColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                  ? '#3FA55F' : Theme.SECONDARY)
+              Column({ space: 8 }) {
+                Row() {
+                  Text(m.title)
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(Theme.PRIMARY)
+                    .layoutWeight(1)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(MemoryTypeUtil.nameOf(m.type))
+                    .fontSize(10)
+                    .fontColor(MemoryTypeUtil.colorOf(m.type))
+                    .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+                    .backgroundColor(MemoryTypeUtil.colorOf(m.type) + '22')
+                    .borderRadius(9)
+                }
+                .width('100%')
+                Text(m.summary)
+                  .fontSize(13)
+                  .fontColor(Theme.SECONDARY)
+                  .width('100%')
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Row({ space: 6 }) {
+                  ForEach(m.tags.slice(0, 3), (t: string) => {
+                    Text(t)
+                      .fontSize(10)
+                      .fontColor(Theme.TERTIARY)
+                      .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+                      .backgroundColor('#F0F5F1')
+                      .borderRadius(9)
+                  }, (t: string) => t)
+                }
+                .width('100%')
+              }
+              .layoutWeight(1)
+              .padding(14)
+              .borderRadius(16)
+              .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                ? 'rgba(151,255,171,0.22)' : '#FFFFFF')
+              .border({
+                width: this.selectedMemory !== null && this.selectedMemory.id === m.id ? 1.4 : 1,
+                color: this.selectedMemory !== null && this.selectedMemory.id === m.id ? '#6FDC92' : Theme.LINE
+              })
+              .onClick(() => {
+                this.selectMemory(m);
+              })
+            }
+            .layoutWeight(1)
+            .margin({ bottom: 6 })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+        }, (m: Memory) => m.id)
+        Blank().height(230)
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20 })
+    }
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .onScroll((offset: number) => {
+      this.outlineScroll = offset;
+    })
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  treeView() {
+    Stack({ alignContent: Alignment.Top }) {
+      // 缩放浮钮（树模式，位于标题栏下方左侧）
+      Row() {
+        Column() {
+          SymbolGlyph($r('sys.symbol.minus')).fontSize(15).fontColor([Theme.PRIMARY])
+        }
+        .width(34)
+        .height(34)
+        .onClick(() => {
+          this.treeZoom = Math.max(0.5, this.treeZoom - 0.15);
+        })
+        Row().width(1).height(22).backgroundColor(Theme.LINE)
+        Column() {
+          SymbolGlyph($r('sys.symbol.plus')).fontSize(15).fontColor([Theme.PRIMARY])
+        }
+        .width(34)
+        .height(34)
+        .onClick(() => {
+          this.treeZoom = Math.min(2.4, this.treeZoom + 0.15);
+        })
+      }
+      .height(38)
+      .borderRadius(19)
+      .backgroundColor('rgba(255,255,255,0.9)')
+      .border({ width: 1, color: 'rgba(255,255,255,0.9)' })
+      .shadow({ radius: 8, color: 'rgba(40,60,46,0.10)', offsetY: 2 })
+      .position({ x: 14, y: DeviceUtil.statusBarH + 64 })
+
+      MemoryTreeGraph({
+        root: this.buildTree(),
+        selectedId: this.selectedMemory !== null ? this.selectedMemory.id : '',
+        zoom: this.treeZoom,
+        onSelect: (nodeId: string) => {
+          if (nodeId.startsWith('group-') || nodeId === 'root') {
+            const lst = this.sortedMemories();
+            if (lst.length > 0) {
+              this.selectMemory(lst[0]);
+            }
+            return;
+          }
+          const m = this.repo.getById(nodeId);
+          if (m !== null) {
+            this.selectMemory(m);
+          }
+        }
+      })
+      .width('100%')
+      .height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      if (this.memories.length === 0) {
+        EmptyState({
+          text: '种下记忆后，这里会长出一棵记忆树',
+          icon: $r('sys.symbol.leaf')
+        })
+      }
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  detailPanel() {
+    Column() {
+      // 拖动把手
+      Column() {
+        Row().width(46).height(5).borderRadius(3).backgroundColor('#C4D3C8')
+      }
+      .width('100%')
+      .height(26)
+      .justifyContent(FlexAlign.Center)
+      .gesture(
+        PanGesture({ direction: PanDirection.Vertical, distance: 4 })
+          .onActionStart(() => {
+            this.panBase = this.detailH;
+          })
+          .onActionUpdate((event: GestureEvent) => {
+            this.detailH = Math.min(Math.max(this.panBase - event.offsetY, 196), 400);
+          })
+          .onActionEnd(() => {
+            const target = this.panBase > 280 ? 196 : 372;
+            animateTo({ duration: 240, curve: Curve.EaseOut }, () => {
+              this.detailH = target;
+            });
+          })
+      )
+
+      Row() {
+        Text(this.sel().title)
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.PRIMARY)
+          .layoutWeight(1)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(this.sel().date)
+          .fontSize(12)
+          .fontColor(Theme.TERTIARY)
+          .margin({ right: 10 })
+        Row({ space: 4 }) {
+          ForEach(this.sel().tags.slice(0, 2), (t: string) => {
+            Text(t)
+              .fontSize(10)
+              .fontColor(Theme.TERTIARY)
+              .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+              .backgroundColor('#EFF5F0')
+              .borderRadius(10)
+          }, (t: string) => t)
+        }
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20 })
+
+      if (this.detailH > 300) {
+        Column({ space: 8 }) {
+          Divider().color(Theme.LINE).strokeWidth(0.6)
+          Text(this.sel().summary)
+            .fontSize(13)
+            .fontColor(Theme.SECONDARY)
+            .width('100%')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(this.sel().content)
+            .fontSize(12)
+            .fontColor(Theme.TERTIARY)
+            .lineHeight(19)
+            .width('100%')
+            .maxLines(4)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        .padding({ left: 20, right: 20, top: 10 })
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180 }))
+      }
+      Blank()
+    }
+    .width('92%')
+    .height(this.detailH)
+    .borderRadius({ topLeft: 26, topRight: 26 })
+    .backgroundColor('rgba(250,252,249,0.96)')
+    .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
+    .border({ width: 1, color: 'rgba(255,255,255,0.75)' })
+    .shadow({ radius: 34, color: 'rgba(26,48,32,0.20)', offsetY: -6 })
+    .clip(true)
+  }
+
+  @Builder
+  gardenToolbar() {
+    Row() {
+      Column() {
+        Column().width(44).height(44).borderRadius(999).backgroundColor('#FFFFFF')
+        SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(18).fontColor(['#3E6B4B'])
+      }
+      .width(44)
+      .height(44)
+      .onClick(() => {
+        if (this.selectedMemory === null) {
+          return;
+        }
+        this.editTitle = this.selectedMemory.title;
+        this.editTags = this.selectedMemory.tags.join('，');
+        this.editSummary = this.selectedMemory.summary;
+        this.editOpen = true;
+      })
+
+      Column() {
+        Column().width(44).height(44).borderRadius(999).backgroundColor('#FFFFFF')
+        SymbolGlyph($r('sys.symbol.trash')).fontSize(18).fontColor(['#C4573F'])
+      }
+      .width(44)
+      .height(44)
+      .onClick(() => {
+        if (this.selectedMemory === null) {
+          return;
+        }
+        this.openDeleteConfirm();
+      })
+      .margin({ left: 18 })
+
+      Blank()
+
+      Column() {
+        Column().width(44).height(44).borderRadius(999).backgroundColor('#FFFFFF')
+        SymbolGlyph($r('sys.symbol.arrow_counterclockwise')).fontSize(18)
+          .fontColor(this.undoStack.length > 0 ? ['#3E6B4B'] : ['#C9D6CC'])
+      }
+      .width(44)
+      .height(44)
+      .opacity(this.undoStack.length > 0 ? 1 : 0.5)
+      .onClick(() => {
+        if (this.undoStack.length === 0) {
+          PromptUtil.toast('没有可以撤销的操作');
+          return;
+        }
+        const last = this.undoStack[this.undoStack.length - 1];
+        this.undoStack = this.undoStack.slice(0, this.undoStack.length - 1);
+        this.redoStack.push(last);
+        PromptUtil.toast('已撤销：' + last);
+      })
+
+      Column() {
+        Column().width(44).height(44).borderRadius(999).backgroundColor('#FFFFFF')
+        SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(18)
+          .fontColor(this.redoStack.length > 0 ? ['#3E6B4B'] : ['#C9D6CC'])
+      }
+      .width(44)
+      .height(44)
+      .opacity(this.redoStack.length > 0 ? 1 : 0.5)
+      .onClick(() => {
+        if (this.redoStack.length === 0) {
+          PromptUtil.toast('没有可以重做的操作');
+          return;
+        }
+        const last = this.redoStack[this.redoStack.length - 1];
+        this.redoStack = this.redoStack.slice(0, this.redoStack.length - 1);
+        this.undoStack.push(last);
+        PromptUtil.toast('已重做：' + last);
+      })
+      .margin({ left: 12 })
+    }
+    .width('88%')
+    .height(64)
+    .padding({ left: 18, right: 18 })
+    .borderRadius(32)
+    .backgroundColor('rgba(252,254,251,0.9)')
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+    .border({ width: 1, color: 'rgba(255,255,255,0.85)' })
+    .shadow({ radius: 22, color: Theme.SHADOW, offsetY: 6 })
+  }
+
+  @Builder
+  searchOverlay() {
+    Column({ space: 10 }) {
+      Row({ space: 10 }) {
+        Row({ space: 8 }) {
+          SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(16).fontColor([Theme.TERTIARY])
+          TextInput({
+            text: this.searchText,
+            placeholder: '搜索标题、摘要、标签、日期……'
+          })
+            .fontSize(14)
+            .fontColor(Theme.PRIMARY)
+            .backgroundColor('rgba(0,0,0,0)')
+            .layoutWeight(1)
+            .onChange((v: string) => {
+              this.searchText = v;
+            })
+          if (this.searchText !== '') {
+            Column() {
+              Column().width(24).height(24).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+              SymbolGlyph($r('sys.symbol.xmark')).fontSize(12).fontColor([Theme.SECONDARY])
+            }
+            .width(24)
+            .height(24)
+            .onClick(() => {
+              this.searchText = '';
+            })
+          }
+        }
+        .height(44)
+        .layoutWeight(1)
+        .padding({ left: 14, right: 8 })
+        .borderRadius(22)
+        .backgroundColor('rgba(255,255,255,0.94)')
+        .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+        .border({ width: 1, color: 'rgba(255,255,255,0.9)' })
+        .shadow({ radius: 16, color: 'rgba(26,48,32,0.14)', offsetY: 4 })
+
+        Text('取消')
+          .fontSize(14)
+          .fontColor(Theme.SECONDARY)
+          .onClick(() => {
+            this.searchOpen = false;
+            this.searchText = '';
+          })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16 })
+      .margin({ top: 74 })
+
+      Column() {
+        Scroll() {
+          Column() {
+            if (this.filtered().length === 0) {
+              Text('没有找到相关记忆')
+                .fontSize(13)
+                .fontColor(Theme.TERTIARY)
+                .margin({ top: 30 })
+            } else {
+              ForEach(this.filtered(), (m: Memory) => {
+                Row({ space: 10 }) {
+                  Column({ space: 4 }) {
+                    Text(m.title)
+                      .fontSize(14)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor(Theme.PRIMARY)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Text(m.date + ' · ' + MemoryTypeUtil.nameOf(m.type))
+                      .fontSize(11)
+                      .fontColor(Theme.TERTIARY)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(14).fontColor([Theme.TERTIARY])
+                }
+                .width('100%')
+                .height(56)
+                .padding({ left: 16, right: 16 })
+                .borderRadius(14)
+                .backgroundColor(Theme.CARD)
+                .margin({ bottom: 8 })
+                .onClick(() => {
+                  this.selectMemory(m);
+                  this.searchOpen = false;
+                  this.searchText = '';
+                })
+              }, (m: Memory) => m.id)
+            }
+          }
+          .width('100%')
+          .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+        }
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
+        .height(420)
+        .width('96%')
+        .margin({ top: 6 })
+        .borderRadius(20)
+        .backgroundColor('rgba(252,254,251,0.97)')
+        .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
+        .border({ width: 1, color: 'rgba(255,255,255,0.85)' })
+        .shadow({ radius: 26, color: 'rgba(26,48,32,0.16)', offsetY: 6 })
+      }
+      .width('96%')
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  @Builder
+  editSheetContent() {
+    Column({ space: 12 }) {
+      Row() {
+        Text('编辑记忆')
+          .fontSize(19)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.PRIMARY)
+          .layoutWeight(1)
+        Column() {
+          Column().width(32).height(32).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+          SymbolGlyph($r('sys.symbol.xmark')).fontSize(14).fontColor([Theme.SECONDARY])
+        }
+        .width(32)
+        .height(32)
+        .onClick(() => {
+          this.editOpen = false;
+        })
+      }
+      .width('100%')
+
+      TextInput({ text: this.editTitle, placeholder: '记忆标题' })
+        .fontSize(15)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(14)
+        .height(48)
+        .padding({ left: 14, right: 14 })
+        .onChange((v: string) => {
+          this.editTitle = v;
+        })
+      TextInput({ text: this.editTags, placeholder: '标签（逗号分隔）' })
+        .fontSize(14)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(14)
+        .height(44)
+        .padding({ left: 14, right: 14 })
+        .onChange((v: string) => {
+          this.editTags = v;
+        })
+      TextArea({ text: this.editSummary, placeholder: '记忆摘要' })
+        .fontSize(14)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(14)
+        .height(110)
+        .padding(12)
+        .onChange((v: string) => {
+          this.editSummary = v;
+        })
+
+      Row({ space: 14 }) {
+        Button('保存')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#1E3A26')
+          .backgroundColor(Theme.ACCENT_GREEN)
+          .height(50)
+          .layoutWeight(1)
+          .borderRadius(17)
+          .onClick(() => {
+            if (this.selectedMemory === null) {
+              return;
+            }
+            const m = this.selectedMemory;
+            if (this.editTitle.trim() !== '') {
+              m.title = this.editTitle.trim();
+            }
+            const tags: string[] = [];
+            const parts = this.editTags.split('，');
+            for (let i = 0; i < parts.length; i++) {
+              const t = parts[i].trim();
+              if (t !== '') {
+                tags.push(t);
+              }
+            }
+            m.tags = tags;
+            m.summary = this.editSummary.trim();
+            this.repo.update(m);
+            this.selectedMemory = m;
+            this.undoStack = this.undoStack.concat(['编辑「' + m.title + '」']);
+            this.redoStack = [];
+            this.editOpen = false;
+            PromptUtil.toast('已保存修改');
+          })
+        Button('取消')
+          .fontSize(15)
+          .fontColor(Theme.SECONDARY)
+          .backgroundColor('#EEF3EE')
+          .height(50)
+          .layoutWeight(1)
+          .borderRadius(17)
+          .onClick(() => {
+            this.editOpen = false;
+          })
+      }
+      .width('100%')
+      .padding({ bottom: 14 })
+    }
+    .width('100%')
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.Top }) {
+      if (this.pageState === PageState.LOADING) {
+        LoadingState({ text: '默默正在布置花园……' })
+      } else if (this.pageState === PageState.EMPTY) {
+        EmptyState({ text: '花园空空如也', icon: $r('sys.symbol.flower') })
+      } else {
+        if (this.mode === GardenMode.GARDEN) {
+          this.gardenView()
+        } else if (this.mode === GardenMode.OUTLINE) {
+          this.outlineView()
+        } else {
+          this.treeView()
+        }
+      }
+
+      // 详情浮窗 + 工具栏
+      if (this.selectedMemory !== null && this.pageState === PageState.SUCCESS) {
+        Column() {
+          this.detailPanel()
+          Column() {
+            this.gardenToolbar()
+          }
+          .width('100%')
+          .margin({ top: 10 })
+          .justifyContent(FlexAlign.Center)
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.End)
+        .padding({ bottom: 128 })
+      }
+
+      // 模式菜单（打开时挂载）
+      if (this.menuOpen) {
+        ModeMenu({
+          visible: true,
+          mode: this.mode,
+          onSelect: (m: GardenMode) => {
+            this.switchMode(m);
+          }
+        })
+      }
+
+      // 搜索浮窗
+      if (this.searchOpen) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(246,251,246,0.72)')
+          .onClick(() => {
+            this.searchOpen = false;
+          })
+        this.searchOverlay()
+      }
+
+
+      // 编辑浮窗
+      if (this.editOpen) {
+        GlassSheet({
+          show: true,
+          heightRatio: 0.62,
+          onDismiss: () => {
+            this.editOpen = false;
+          },
+          content: this.editSheetContent
+        })
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(Theme.BG)
+  }
+}

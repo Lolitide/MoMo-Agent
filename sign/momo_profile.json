@@ -1,0 +1,34 @@
+{
+    "version-name": "2.0.0",
+    "version-code": 2,
+    "uuid": "7c9e2f4a-1b6e-4c8a-9f0d-dc73952b5f37",
+    "validity": {
+        "not-before": 1788108252,
+        "not-after": 2103554652
+    },
+    "type": "debug",
+    "bundle-info": {
+        "developer-id": "OpenHarmony",
+        "development-certificate": "-----BEGIN CERTIFICATE-----\nMIIB0DCCAXagAwIBAgIEdW+sYTAKBggqhkjOPQQDAjBCMQswCQYDVQQGEwJDTjEN\nMAsGA1UECgwETW9NbzEMMAoGA1UECwwDRGV2MRYwFAYDVQQDDA1Nb01vIExvY2Fs\nIENBMB4XDTI2MDgzMTE2NDM0N1oXDTM2MDgyODE2NDM0N1owQjELMAkGA1UEBhMC\nQ04xDTALBgNVBAoMBE1vTW8xDDAKBgNVBAsMA0RldjEWMBQGA1UEAwwNTW9NbyBB\ncHAgU2lnbjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBo1NSJxCptkJWVu0Hfw\n4yDCQI2A/lCk3ijTEf+cXRRYcpoSdECObh8f5BafiLidzaiyxH2iU/RANKod0Ggm\nIICjWjBYMB0GA1UdDgQWBBTPuoFihXeCWq3CLTpxpk/ObPamOzAPBgNVHRMECDAG\nAQH/AgEAMA4GA1UdDwEB/wQEAwIHgDAWBgNVHSUBAf8EDDAKBggrBgEFBQcDAzAK\nBggqhkjOPQQDAgNIADBFAiBrkKBSeqfIuo2MKFLDEG6l9m+Dm7uqB+SxdcwgPXkQ\njQIhAN0sfIGPOCAVIpEIcdM2vpJ5fWB4SUblXbOwtQQV5BdA\n-----END CERTIFICATE-----",
+        "bundle-name": "com.example.momo",
+        "apl": "normal",
+        "app-feature": "hos_normal_app"
+    },
+    "acls": {
+        "allowed-acls": [
+            ""
+        ]
+    },
+    "permissions": {
+        "restricted-permissions": [
+            ""
+        ]
+    },
+    "debug-info": {
+        "device-ids": [
+            "454D55057494E058383602320B718B79C42D0A02009F9E38C857F00000000000"
+        ],
+        "device-id-type": "udid"
+    },
+    "issuer": "pki_internal"
+}

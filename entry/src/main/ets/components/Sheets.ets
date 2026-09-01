@@ -1,0 +1,382 @@
+/*
+ * ============================================================================
+ * 文件名：components/Sheets.ets
+ * ============================================================================
+ * 【用途】三个业务浮窗内容组件（配合 GlassSheet/bindSheet 使用）：
+ *   AddSheetContent（“记一笔”，说给默默/撤回重做/记下以前/默默记下）、
+ *   CorrectionSheetContent（纠正默默的理解，文本区+批量纠正/重新生成）、
+ *   FeedbackSheetContent（1-5 星反馈+留言+默默回应）。
+ * 【前置条件 / 假设】
+ *   - 依赖：Theme、PromptUtil、MoMoAvatar、MoMoState；
+ *   - 假设：内容组件只维护自身表单状态（text/rating），决策权交给上层回调。
+ * 【输入 / 输出（后置条件）】
+ *   - 输入：用户输入文本/评分/点击按钮；
+ *   - 输出：Add -> onDone(text)/onDismiss；纠正 -> onApply(text)/onDismiss；
+ *     反馈 -> onSubmit(score,msg)/onDismiss。
+ * 【关键类 / 算法】
+ *   - form 状态驱动：文字校验（空文本拦截 Toast）；评分点星逻辑（再次点击取消）。
+ * 【参考源】
+ *   - MoMo_DOC/UI 参考图（记录浮窗/纠正/反馈）；iBest-UI 输入区样式
+ * ============================================================================
+ */
+import { Theme } from '../utils/Theme';
+import { PromptUtil } from '../utils/PromptUtil';
+import { MoMoAvatar } from './MoMoAvatar';
+import { MoMoState } from '../model/Models';
+
+@Component
+// “记一笔”表单：voiceOn 控制语音胶囊高亮；文本为空则拦截“默默记下”并提示
+export struct AddSheetContent {
+  @Prop userName: string = '酪酪肽';
+  onDismiss: () => void = () => {};
+  onDone: (kind: string) => void = (kind: string) => {};
+  @State text: string = '';
+  @State voiceOn: boolean = true;
+
+  build() {
+    Column({ space: 14 }) {
+      Row() {
+        Text('今天想说点啥？')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.PRIMARY)
+          .layoutWeight(1)
+        Column() {
+          Stack() {
+            Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
+          }
+        }
+        .width(34)
+        .height(34)
+        .onClick(() => {
+          this.onDismiss();
+        })
+      }
+      .width('100%')
+
+      Text('记录下此刻的感受吧，' + this.userName)
+        .fontSize(13)
+        .fontColor(Theme.TERTIARY)
+        .width('100%')
+        .margin({ bottom: 4 })
+
+      Column() {
+        TextArea({
+          text: this.text,
+          placeholder: '默默在听……'
+        })
+          .fontSize(15)
+          .fontColor(Theme.PRIMARY)
+          .height(190)
+          .backgroundColor('rgba(0,0,0,0)')
+          .padding({ left: 4, right: 4 })
+          .onChange((v: string) => {
+            this.text = v;
+          })
+
+        Row() {
+          Column() {
+            Row({ space: 8 }) {
+              SymbolGlyph($r('sys.symbol.mic')).fontSize(16)
+                .fontColor([this.voiceOn ? Theme.BRAND_DEEP : Theme.TERTIARY])
+              Text('说给默默').fontSize(13)
+                .fontColor(this.voiceOn ? Theme.BRAND_DEEP : Theme.TERTIARY)
+            }
+            .height(34)
+            .padding({ left: 14, right: 14 })
+            .borderRadius(17)
+            .backgroundColor(this.voiceOn ? 'rgba(151,255,171,0.28)' : 'rgba(0,0,0,0.04)')
+          }
+          .onClick(() => {
+            this.voiceOn = !this.voiceOn;
+          })
+
+          Row({ space: 10 }) {
+            Column() {
+              Stack() {
+                Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+                SymbolGlyph($r('sys.symbol.arrow_counterclockwise')).fontSize(15).fontColor([Theme.SECONDARY])
+              }
+            }
+            .width(34)
+            .height(34)
+            .onClick(() => {
+              PromptUtil.toast('已撤回上一步输入');
+            })
+            Column() {
+              Stack() {
+                Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+                SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(15).fontColor([Theme.SECONDARY])
+              }
+            }
+            .width(34)
+            .height(34)
+            .onClick(() => {
+              PromptUtil.toast('已重做下一步输入');
+            })
+          }
+        }
+        .width('100%')
+        .justifyContent(FlexAlign.SpaceBetween)
+        .margin({ top: 6 })
+      }
+      .width('100%')
+      .padding(14)
+      .borderRadius(22)
+      .backgroundColor('#FFFFFF')
+      .border({ width: 1, color: Theme.LINE })
+
+      Row({ space: 14 }) {
+        Button('记下以前')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#5C4A2E')
+          .backgroundColor(Theme.ACCENT_ORANGE)
+          .height(54)
+          .layoutWeight(1)
+          .borderRadius(20)
+          .onClick(() => {
+            PromptUtil.toast('「记下以前」将在后续版本接入（Mock）');
+          })
+        Button('默默记下')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#1E3A26')
+          .backgroundColor(Theme.ACCENT_GREEN)
+          .height(54)
+          .layoutWeight(1)
+          .borderRadius(20)
+          .onClick(() => {
+            if (this.text.trim().length === 0) {
+              PromptUtil.toast('先对默默说点什么吧');
+              return;
+            }
+            this.onDone(this.text);
+          })
+      }
+      .width('100%')
+      .padding({ top: 10, bottom: 12 })
+    }
+    .width('100%')
+  }
+}
+
+@Component
+export struct CorrectionSheetContent {
+  @Prop originalText: string = '默默认为你今天的心情总体平稳，但下午可能有些疲惫。';
+  onDismiss: () => void = () => {};
+  onApply: (text: string) => void = (text: string) => {};
+  @State text: string = '';
+
+  build() {
+    Column({ space: 12 }) {
+      Row() {
+        Stack() {
+          Column().width(40).height(40).borderRadius(999).backgroundColor('rgba(151,255,171,0.25)')
+          SymbolGlyph($r('sys.symbol.doc_rectify')).fontSize(20).fontColor([Theme.BRAND_DEEP])
+        }
+        .margin({ right: 10 })
+        Text('纠正')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.PRIMARY)
+          .layoutWeight(1)
+        Column() {
+          Stack() {
+            Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
+          }
+        }
+        .width(34)
+        .height(34)
+        .onClick(() => {
+          this.onDismiss();
+        })
+      }
+      .width('100%')
+      .margin({ bottom: 6 })
+
+      Text('默默原来的理解')
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(Theme.PRIMARY)
+        .width('100%')
+
+      Column() {
+        Text(this.originalText)
+          .fontSize(14)
+          .fontColor(Theme.SECONDARY)
+          .lineHeight(22)
+      }
+      .width('100%')
+      .padding(16)
+      .borderRadius(20)
+      .backgroundColor('#FFFFFF')
+      .border({ width: 1, color: Theme.LINE })
+
+      Text('你的真实想法')
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(Theme.PRIMARY)
+        .width('100%')
+        .margin({ top: 6 })
+
+      TextArea({
+        text: this.text,
+        placeholder: '示例输入文本……'
+      })
+        .fontSize(15)
+        .fontColor(Theme.PRIMARY)
+        .height(210)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(20)
+        .border({ width: 1, color: Theme.LINE })
+        .padding(14)
+        .onChange((v: string) => {
+          this.text = v;
+        })
+
+      // 底部按钮
+      Row({ space: 14 }) {
+        Button() {
+          Row({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.checkmark_square')).fontSize(17).fontColor(['#1E3A26'])
+            Text('批量纠正').fontSize(15).fontWeight(FontWeight.Medium).fontColor('#1E3A26')
+          }
+        }
+        .backgroundColor(Theme.ACCENT_GREEN)
+        .height(50)
+        .layoutWeight(1)
+        .borderRadius(18)
+        .onClick(() => {
+          this.onApply(this.text);
+        })
+
+        Button() {
+          Row({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(17).fontColor(['#FFFFFF'])
+            Text('重新生成').fontSize(15).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
+          }
+        }
+        .backgroundColor('#2C9C4E')
+        .height(50)
+        .layoutWeight(1)
+        .borderRadius(18)
+        .onClick(() => {
+          PromptUtil.toast('已重新生成（Mock），观点未变化');
+        })
+      }
+      .width('100%')
+      .padding({ top: 8, bottom: 14 })
+    }
+    .width('100%')
+  }
+}
+
+@Component
+export struct FeedbackSheetContent {
+  onDismiss: () => void = () => {};
+  onSubmit: (score: number, msg: string) => void = (score: number, msg: string) => {};
+  @State score: number = 0;
+  @State msg: string = '';
+
+  build() {
+    Column({ space: 12 }) {
+      Row() {
+        Stack() {
+          Column().width(40).height(40).borderRadius(999).backgroundColor('rgba(255,203,105,0.22)')
+          SymbolGlyph($r('sys.symbol.star')).fontSize(20).fontColor(['#E8A33D'])
+        }
+        .margin({ right: 10 })
+        Text('反馈')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.PRIMARY)
+          .layoutWeight(1)
+        Column() {
+          Stack() {
+            Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
+            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
+          }
+        }
+        .width(34)
+        .height(34)
+        .onClick(() => {
+          this.onDismiss();
+        })
+      }
+      .width('100%')
+      .margin({ bottom: 4 })
+
+      Text('为默默的理解打分')
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(Theme.PRIMARY)
+        .width('100%')
+
+      Row({ space: 12 }) {
+        ForEach([1, 2, 3, 4, 5], (n: number) => {
+          SymbolGlyph(this.score >= n ? $r('sys.symbol.star_fill') : $r('sys.symbol.star'))
+            .fontSize(34)
+            .fontColor([this.score >= n ? '#F5B23C' : '#D8E0D9'])
+            .onClick(() => {
+              if (this.score === n) {
+                this.score = 0;
+              } else {
+                this.score = n;
+              }
+            })
+        }, (n: number) => n.toString())
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .padding({ top: 6, bottom: 8 })
+
+      TextArea({
+        text: this.msg,
+        placeholder: '还想对默默说什么？（可选）'
+      })
+        .fontSize(14)
+        .fontColor(Theme.PRIMARY)
+        .height(96)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(18)
+        .border({ width: 1, color: Theme.LINE })
+        .padding(12)
+        .onChange((v: string) => {
+          this.msg = v;
+        })
+
+      Row({ space: 12 }) {
+        Column() {
+          MoMoAvatar({ avatarSize: 64, state: MoMoState.HAPPY })
+        }
+        .width(74)
+        .height(74)
+        .borderRadius(37)
+        .backgroundColor('rgba(151,255,171,0.18)')
+        .justifyContent(FlexAlign.Center)
+
+        Button('默默记住了')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#1E3A26')
+          .backgroundColor(Theme.ACCENT_GREEN)
+          .height(50)
+          .layoutWeight(1)
+          .borderRadius(18)
+          .onClick(() => {
+            if (this.score === 0) {
+              PromptUtil.toast('先给默默点一颗星吧');
+              return;
+            }
+            this.onSubmit(this.score, this.msg);
+          })
+      }
+      .width('100%')
+      .padding({ top: 10, bottom: 16 })
+    }
+    .width('100%')
+  }
+}
