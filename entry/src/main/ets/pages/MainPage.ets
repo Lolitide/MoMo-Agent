@@ -37,7 +37,6 @@ import { AppRouter, RouteName } from '../router/AppRouter';
 import { GardenController, CompanionService, TabController, HomeController, ShellState } from '../service/Services';
 import { UserRepository, MemoryRepository } from '../repository/Repositories';
 import { Memory, MemoryType, MoMoState, GardenMode } from '../model/Models';
-import { GlassSheet } from '../components/GlassSheet';
 import { AddSheetContent } from '../components/Sheets';
 import { PromptUtil } from '../utils/PromptUtil';
 import { Theme } from '../utils/Theme';
@@ -332,25 +331,22 @@ struct MainPage {
             mainTitle: this.currentTitle()
           },
           menu: this.currentMenu()
-        }
+        },
+        avoidLayoutSafeArea: true
       })
       .systemBarStyle(
         { statusBarContentColor: '#1E2A22' },
         { statusBarContentColor: '#1E2A22' }
       )
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
       .bindToScrollable([ShellState.homeScroller, ShellState.gardenScroller, ShellState.settingsScroller])
-
-      // 浮窗“挂载即显示”原则：关闭时不渲染任何层，避免残留全屏层拦截滚动/点击
-      if (this.addOpen) {
-        GlassSheet({
-          show: true,
-          heightRatio: 0.76,
-          onDismiss: () => {
-            this.closeAdd();
-          },
-          content: this.addSheetContent
-        })
-      }
+      // 系统底部浮层（bindSheet）：自带拖拽关闭条；加号点击 -> addOpen=true 即从底部上浮
+      .bindSheet($$this.addOpen, this.addSheetContent, {
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+        dragBar: true,
+        backgroundColor: Theme.SHEET_BG,
+        showInSubWindow: false
+      })
     }
     .width('100%')
     .height('100%')

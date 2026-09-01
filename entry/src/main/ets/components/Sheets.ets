@@ -34,129 +34,119 @@ export struct AddSheetContent {
   @State voiceOn: boolean = true;
 
   build() {
-    Column({ space: 14 }) {
+    Column() {
+      // 标题行：标题 + 单个关闭按钮（×）
       Row() {
         Text('今天想说点啥？')
-          .fontSize(20)
+          .fontSize(24)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Theme.PRIMARY)
+          .fontColor(Theme.TEXT_MAIN)
           .layoutWeight(1)
-        Column() {
-          Stack() {
-            Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
-            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
-          }
-        }
-        .width(34)
-        .height(34)
-        .onClick(() => {
-          this.onDismiss();
-        })
       }
       .width('100%')
+      .padding({ left: 22, right: 22, top: 8 })
 
-      Text('记录下此刻的感受吧，' + this.userName)
-        .fontSize(13)
-        .fontColor(Theme.TERTIARY)
-        .width('100%')
-        .margin({ bottom: 4 })
-
+      // 输入卡片：文本区 + 底部内嵌操作行（说给默默 / 撤销重做单胶囊）
       Column() {
         TextArea({
           text: this.text,
-          placeholder: '默默在听……'
+          placeholder: this.userName + ', 记录下此刻的感受吧...'
         })
-          .fontSize(15)
-          .fontColor(Theme.PRIMARY)
-          .height(190)
+          .fontSize(12)
+          .fontColor(Theme.TEXT_MAIN)
+          .height(200)
           .backgroundColor('rgba(0,0,0,0)')
-          .padding({ left: 4, right: 4 })
+          .padding({ left: 6, right: 6, top: 2 })
           .onChange((v: string) => {
             this.text = v;
           })
 
         Row() {
-          Column() {
-            Row({ space: 8 }) {
-              SymbolGlyph($r('sys.symbol.mic')).fontSize(16)
-                .fontColor([this.voiceOn ? Theme.BRAND_DEEP : Theme.TERTIARY])
-              Text('说给默默').fontSize(13)
-                .fontColor(this.voiceOn ? Theme.BRAND_DEEP : Theme.TERTIARY)
-            }
-            .height(34)
-            .padding({ left: 14, right: 14 })
-            .borderRadius(17)
-            .backgroundColor(this.voiceOn ? 'rgba(151,255,171,0.28)' : 'rgba(0,0,0,0.04)')
+          // 说给默默：语音胶囊
+          Row({ space: 6 }) {
+            SymbolGlyph($r('sys.symbol.mic')).fontSize(15)
+              .fontColor([this.voiceOn ? '#3E6B4B' : Theme.TEXT_TERTIARY])
+            Text('说给默默')
+              .fontSize(13)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.voiceOn ? '#3E6B4B' : Theme.TEXT_TERTIARY)
           }
+          .height(40)
+          .padding({ left: 16, right: 16 })
+          .borderRadius(20)
+          .backgroundColor(this.voiceOn ? 'rgba(151,255,171,0.30)' : '#F2F4F1')
           .onClick(() => {
             this.voiceOn = !this.voiceOn;
+            PromptUtil.toast(this.voiceOn ? '默默在听…' : '已取消说话');
           })
+          .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.94 })
 
-          Row({ space: 10 }) {
-            Column() {
-              Stack() {
-                Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
-                SymbolGlyph($r('sys.symbol.arrow_counterclockwise')).fontSize(15).fontColor([Theme.SECONDARY])
-              }
-            }
-            .width(34)
-            .height(34)
-            .onClick(() => {
-              PromptUtil.toast('已撤回上一步输入');
-            })
-            Column() {
-              Stack() {
-                Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
-                SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(15).fontColor([Theme.SECONDARY])
-              }
-            }
-            .width(34)
-            .height(34)
-            .onClick(() => {
-              PromptUtil.toast('已重做下一步输入');
-            })
+          // 撤销 / 重做：单枚胶囊（整组一体，符合设计稿）
+          Row({ space: 14 }) {
+            SymbolGlyph($r('sys.symbol.arrow_counterclockwise')).fontSize(16).fontColor([Theme.TEXT_SUB])
+              .onClick(() => {
+                PromptUtil.toast('已撤回上一步输入');
+              })
+            SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(16).fontColor([Theme.TEXT_SUB])
+              .onClick(() => {
+                PromptUtil.toast('已重做下一步输入');
+              })
           }
+          .height(40)
+          .width(96)
+          .borderRadius(20)
+          .backgroundColor('rgba(0,0,0,0.04)')
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center)
         }
         .width('100%')
         .justifyContent(FlexAlign.SpaceBetween)
-        .margin({ top: 6 })
+        .margin({ top: 10 })
       }
-      .width('100%')
-      .padding(14)
-      .borderRadius(22)
+      .width('90%')
+      .padding(16)
+      .borderRadius(24)
       .backgroundColor('#FFFFFF')
-      .border({ width: 1, color: Theme.LINE })
+      .border({ width: 1, color: Theme.CARD_BORDER })
+      .shadow({ radius: 14, color: 'rgba(38,61,42,0.05)', offsetY: 4 })
+      .margin({ left: 18, right: 18, top: 16 })
 
+      // 底部主操作：记下以前（橙）/ 默默记下（绿）
       Row({ space: 14 }) {
-        Button('记下以前')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#5C4A2E')
-          .backgroundColor(Theme.ACCENT_ORANGE)
-          .height(54)
-          .layoutWeight(1)
-          .borderRadius(20)
-          .onClick(() => {
-            PromptUtil.toast('「记下以前」将在后续版本接入（Mock）');
-          })
-        Button('默默记下')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#1E3A26')
-          .backgroundColor(Theme.ACCENT_GREEN)
-          .height(54)
-          .layoutWeight(1)
-          .borderRadius(20)
-          .onClick(() => {
-            if (this.text.trim().length === 0) {
-              PromptUtil.toast('先对默默说点什么吧');
-              return;
-            }
-            this.onDone(this.text);
-          })
+        Button() {
+          Text('记下以前')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#5C4A2E')
+        }
+        .backgroundColor(Theme.ACCENT_ORANGE)
+        .height(54)
+        .layoutWeight(1)
+        .borderRadius(20)
+        .onClick(() => {
+          PromptUtil.toast('「记下以前」将在后续版本接入（Mock）');
+        })
+
+        Button() {
+          Text('默默记下')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#1E3A26')
+        }
+        .backgroundColor(Theme.ACCENT_GREEN)
+        .height(54)
+        .layoutWeight(1)
+        .borderRadius(20)
+        .onClick(() => {
+          if (this.text.trim().length === 0) {
+            PromptUtil.toast('先对默默说点什么吧');
+            return;
+          }
+          this.onDone(this.text);
+        })
       }
       .width('100%')
-      .padding({ top: 10, bottom: 12 })
+      .padding({ left: 18, right: 18, top: 16, bottom: 26 })
     }
     .width('100%')
   }

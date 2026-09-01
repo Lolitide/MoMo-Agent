@@ -50,7 +50,30 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'MoMo', 'Succeeded in loading the content.');
+      // 官方沉浸式配置：全屏布局 + 状态栏/导航栏透明（详见《HarmonyOS 沉浸式窗口》文档）
+      this.setImmersiveWindow();
     });
+  }
+
+  /** 设置沉浸式窗口：布局扩展到系统安全区之外，状态栏/底部横条区域改为透明（由页面背景接管） */
+  private setImmersiveWindow(): void {
+    try {
+      const win = window.getLastWindow(this.context);
+      win.then((w: window.Window) => {
+        w.setWindowLayoutFullScreen(true);
+        w.setWindowSystemBarProperties({
+          statusBarColor: '#00000000',
+          navigationBarColor: '#00000000',
+          statusBarContentColor: '#1E2A22',
+          navigationBarContentColor: '#1E2A22'
+        });
+        hilog.info(DOMAIN, 'MoMo', 'Immersive window configured');
+      }).catch((e: Error) => {
+        hilog.warn(DOMAIN, 'MoMo', 'setImmersiveWindow failed: ' + e.message);
+      });
+    } catch (e) {
+      hilog.warn(DOMAIN, 'MoMo', 'setImmersiveWindow exception');
+    }
   }
 
   onWindowStageDestroy(): void {
