@@ -160,85 +160,94 @@ export struct CorrectionSheetContent {
   @State text: string = '';
 
   build() {
-    Column({ space: 12 }) {
+    Column() {
+      // 标题行：图标 + 标题 + 单个 ×
       Row() {
-        Stack() {
-          Column().width(40).height(40).borderRadius(999).backgroundColor('rgba(151,255,171,0.25)')
-          SymbolGlyph($r('sys.symbol.doc_rectify')).fontSize(20).fontColor([Theme.BRAND_DEEP])
-        }
-        .margin({ right: 10 })
-        Text('纠正')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Theme.PRIMARY)
-          .layoutWeight(1)
         Column() {
           Stack() {
-            Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
-            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
+            Column().width(40).height(40).borderRadius(999).backgroundColor('rgba(151,255,171,0.25)')
+            SymbolGlyph($r('sys.symbol.doc_rectify')).fontSize(20).fontColor([Theme.BRAND_DEEP])
           }
         }
-        .width(34)
-        .height(34)
-        .onClick(() => {
-          this.onDismiss();
-        })
+        .width(40)
+        .height(40)
+        Text('纠正')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.TEXT_MAIN)
+          .layoutWeight(1)
+          .margin({ left: 12 })
       }
       .width('100%')
-      .margin({ bottom: 6 })
+      .padding({ left: 22, right: 22, top: 8 })
 
-      Text('默默原来的理解')
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(Theme.PRIMARY)
-        .width('100%')
-
-      Column() {
-        Text(this.originalText)
+      // 默默原来的理解
+      Column({ space: 8 }) {
+        Text('默默原来的理解')
           .fontSize(14)
-          .fontColor(Theme.SECONDARY)
-          .lineHeight(22)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.TEXT_MAIN)
+          .width('100%')
+        Column() {
+          Text(this.originalText)
+            .fontSize(14)
+            .fontColor(Theme.TEXT_SUB)
+            .lineHeight(22)
+            .width('100%')
+        }
+        .width('100%')
+        .padding(16)
+        .borderRadius(20)
+        .backgroundColor('#FFFFFF')
+        .border({ width: 1, color: Theme.CARD_BORDER })
       }
       .width('100%')
-      .padding(16)
-      .borderRadius(20)
-      .backgroundColor('#FFFFFF')
-      .border({ width: 1, color: Theme.LINE })
+      .padding({ left: 22, right: 22 })
+      .margin({ top: 14 })
 
-      Text('你的真实想法')
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(Theme.PRIMARY)
+      // 你的真实想法
+      Column({ space: 8 }) {
+        Text('你的真实想法')
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.TEXT_MAIN)
+          .width('100%')
+        Column() {
+          TextArea({
+            text: this.text,
+            placeholder: '把真实的理解写在这里……'
+          })
+            .fontSize(15)
+            .fontColor(Theme.TEXT_MAIN)
+            .height(150)
+            .backgroundColor('rgba(0,0,0,0)')
+            .padding({ left: 4, right: 4, top: 2 })
+            .onChange((v: string) => {
+              this.text = v;
+            })
+        }
         .width('100%')
-        .margin({ top: 6 })
-
-      TextArea({
-        text: this.text,
-        placeholder: '示例输入文本……'
-      })
-        .fontSize(15)
-        .fontColor(Theme.PRIMARY)
-        .height(210)
-        .backgroundColor('#FFFFFF')
+        .padding(16)
         .borderRadius(20)
-        .border({ width: 1, color: Theme.LINE })
-        .padding(14)
-        .onChange((v: string) => {
-          this.text = v;
-        })
+        .backgroundColor('#FFFFFF')
+        .border({ width: 1, color: Theme.CARD_BORDER })
+      }
+      .width('100%')
+      .padding({ left: 22, right: 22 })
+      .margin({ top: 12 })
 
-      // 底部按钮
+      // 底部按钮（与添加页一致：54 高、20 圆角、两侧留白）
       Row({ space: 14 }) {
         Button() {
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.checkmark_square')).fontSize(17).fontColor(['#1E3A26'])
-            Text('批量纠正').fontSize(15).fontWeight(FontWeight.Medium).fontColor('#1E3A26')
+            Text('批量纠正').fontSize(16).fontWeight(FontWeight.Medium).fontColor('#1E3A26')
           }
         }
         .backgroundColor(Theme.ACCENT_GREEN)
-        .height(50)
+        .height(54)
         .layoutWeight(1)
-        .borderRadius(18)
+        .borderRadius(20)
         .onClick(() => {
           this.onApply(this.text);
         })
@@ -246,19 +255,19 @@ export struct CorrectionSheetContent {
         Button() {
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(17).fontColor(['#FFFFFF'])
-            Text('重新生成').fontSize(15).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
+            Text('重新生成').fontSize(16).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
           }
         }
         .backgroundColor('#2C9C4E')
-        .height(50)
+        .height(54)
         .layoutWeight(1)
-        .borderRadius(18)
+        .borderRadius(20)
         .onClick(() => {
           PromptUtil.toast('已重新生成（Mock），观点未变化');
         })
       }
       .width('100%')
-      .padding({ top: 8, bottom: 14 })
+      .padding({ left: 18, right: 18, top: 16, bottom: 26 })
     }
     .width('100%')
   }
@@ -272,100 +281,118 @@ export struct FeedbackSheetContent {
   @State msg: string = '';
 
   build() {
-    Column({ space: 12 }) {
+    Column() {
+      // 标题行：图标 + 标题 + 单个 ×
       Row() {
-        Stack() {
-          Column().width(40).height(40).borderRadius(999).backgroundColor('rgba(255,203,105,0.22)')
-          SymbolGlyph($r('sys.symbol.star')).fontSize(20).fontColor(['#E8A33D'])
-        }
-        .margin({ right: 10 })
-        Text('反馈')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Theme.PRIMARY)
-          .layoutWeight(1)
         Column() {
           Stack() {
-            Column().width(34).height(34).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
-            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
+            Column().width(40).height(40).borderRadius(999).backgroundColor('rgba(255,203,105,0.22)')
+            SymbolGlyph($r('sys.symbol.star')).fontSize(20).fontColor(['#E8A33D'])
           }
         }
-        .width(34)
-        .height(34)
-        .onClick(() => {
-          this.onDismiss();
-        })
+        .width(40)
+        .height(40)
+        Text('反馈')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.TEXT_MAIN)
+          .layoutWeight(1)
+          .margin({ left: 12 })
       }
       .width('100%')
-      .margin({ bottom: 4 })
+      .padding({ left: 22, right: 22, top: 8 })
 
-      Text('为默默的理解打分')
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(Theme.PRIMARY)
+      // 打分
+      Column({ space: 8 }) {
+        Text('为默默的理解打分')
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.TEXT_MAIN)
+          .width('100%')
+        Row({ space: 12 }) {
+          ForEach([1, 2, 3, 4, 5], (n: number) => {
+            SymbolGlyph(this.score >= n ? $r('sys.symbol.star_fill') : $r('sys.symbol.star'))
+              .fontSize(34)
+              .fontColor([this.score >= n ? '#F5B23C' : '#D8E0D9'])
+              .onClick(() => {
+                if (this.score === n) {
+                  this.score = 0;
+                } else {
+                  this.score = n;
+                }
+              })
+          }, (n: number) => n.toString())
+        }
         .width('100%')
-
-      Row({ space: 12 }) {
-        ForEach([1, 2, 3, 4, 5], (n: number) => {
-          SymbolGlyph(this.score >= n ? $r('sys.symbol.star_fill') : $r('sys.symbol.star'))
-            .fontSize(34)
-            .fontColor([this.score >= n ? '#F5B23C' : '#D8E0D9'])
-            .onClick(() => {
-              if (this.score === n) {
-                this.score = 0;
-              } else {
-                this.score = n;
-              }
-            })
-        }, (n: number) => n.toString())
+        .justifyContent(FlexAlign.Center)
+        .padding({ top: 8, bottom: 10 })
       }
       .width('100%')
-      .justifyContent(FlexAlign.Center)
-      .padding({ top: 6, bottom: 8 })
+      .padding({ left: 22, right: 22 })
+      .margin({ top: 14 })
 
-      TextArea({
-        text: this.msg,
-        placeholder: '还想对默默说什么？（可选）'
-      })
-        .fontSize(14)
-        .fontColor(Theme.PRIMARY)
-        .height(96)
+      // 留言
+      Column({ space: 8 }) {
+        Text('留言（可选）')
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.TEXT_MAIN)
+          .width('100%')
+        Column() {
+          TextArea({
+            text: this.msg,
+            placeholder: '还想对默默说什么？'
+          })
+            .fontSize(15)
+            .fontColor(Theme.TEXT_MAIN)
+            .height(110)
+            .backgroundColor('rgba(0,0,0,0)')
+            .padding({ left: 4, right: 4, top: 2 })
+            .onChange((v: string) => {
+              this.msg = v;
+            })
+        }
+        .width('100%')
+        .padding(16)
+        .borderRadius(20)
         .backgroundColor('#FFFFFF')
-        .borderRadius(18)
-        .border({ width: 1, color: Theme.LINE })
-        .padding(12)
-        .onChange((v: string) => {
-          this.msg = v;
-        })
+        .border({ width: 1, color: Theme.CARD_BORDER })
+      }
+      .width('100%')
+      .padding({ left: 22, right: 22 })
+      .margin({ top: 12 })
 
-      Row({ space: 12 }) {
+      // 提交：默默形象 + 主按钮
+      Row({ space: 14 }) {
         Column() {
           MoMoAvatar({ avatarSize: 64, state: MoMoState.HAPPY })
         }
-        .width(74)
-        .height(74)
-        .borderRadius(37)
+        .width(64)
+        .height(64)
+        .borderRadius(32)
         .backgroundColor('rgba(151,255,171,0.18)')
         .justifyContent(FlexAlign.Center)
 
-        Button('默默记住了')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#1E3A26')
-          .backgroundColor(Theme.ACCENT_GREEN)
-          .height(50)
-          .layoutWeight(1)
-          .borderRadius(18)
-          .onClick(() => {
-            if (this.score === 0) {
-              PromptUtil.toast('先给默默点一颗星吧');
-              return;
-            }
-            this.onSubmit(this.score, this.msg);
-          })
+        Button() {
+          Text('默默记住了')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#1E3A26')
+        }
+        .backgroundColor(Theme.ACCENT_GREEN)
+        .height(54)
+        .layoutWeight(1)
+        .borderRadius(20)
+        .onClick(() => {
+          if (this.score === 0) {
+            PromptUtil.toast('先给默默点一颗星吧');
+            return;
+          }
+          this.onSubmit(this.score, this.msg);
+        })
       }
       .width('100%')
-      .padding({ top: 10, bottom: 16 })
+      .padding({ left: 18, right: 18, top: 16, bottom: 26 })
     }
     .width('100%')
   }

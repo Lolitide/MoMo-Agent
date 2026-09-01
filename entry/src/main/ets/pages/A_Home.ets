@@ -81,7 +81,7 @@ export struct A_Home {
       .width('100%')
       .padding({ left: 4 })
 
-      Row({ space: 10 }) {
+      Row({ space: 0 }) {
         Column({ space: 8 }) {
           Scroll() {
             Column({ space: 8 }) {
@@ -109,7 +109,7 @@ export struct A_Home {
             .width('100%')
           }
           .width('100%')
-          .height(122)
+          .height(100)
           .scrollBar(BarState.Off)
           .edgeEffect(EdgeEffect.Spring)
           .align(Alignment.Top)
@@ -118,12 +118,12 @@ export struct A_Home {
 
         Column() {
           Stack() {
-            Column().width(34).height(34).borderRadius(999).backgroundColor('#F0F7F1')
-            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([Theme.BRAND_DEEP])
+            Column().width(20).height(100)
+            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(40).fontColor(['#B261D77E'])
           }
         }
-        .width(34)
-        .height(34)
+        .width(20)
+        .height(100)
         .onClick(() => {
           PromptUtil.toast('打开今日状态');
           AppRouter.push(RouteName.TODAY_MEMORY);
@@ -177,12 +177,12 @@ export struct A_Home {
 
         Column() {
           Stack() {
-            Column().width(34).height(34).borderRadius(999).backgroundColor('#F0F7F1')
-            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([Theme.BRAND_DEEP])
+            Column().width(20).height(100)
+            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(40).fontColor(['#B261D77E'])
           }
         }
-        .width(34)
-        .height(34)
+        .width(20)
+        .height(100)
         .onClick(() => {
           AppRouter.push(RouteName.DAILY_COMIC);
         })

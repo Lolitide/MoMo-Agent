@@ -29,7 +29,6 @@ import { Comic, ComicPage, PageState, MoMoState } from '../model/Models';
 import { Theme } from '../utils/Theme';
 import { PromptUtil } from '../utils/PromptUtil';
 import { DayBottomBar } from '../components/DayBottomBar';
-import { GlassSheet } from '../components/GlassSheet';
 import { CorrectionSheetContent, FeedbackSheetContent } from '../components/Sheets';
 import { LoadingState, ErrorState } from '../components/StateViews';
 import { MoMoAvatar } from '../components/MoMoAvatar';
@@ -40,8 +39,9 @@ export struct B_DailyComic {
   @State comic: Comic = new Comic();
   @State current: number = 0;
   @State scrollBlur: boolean = false;
-  @State correctionOpen: boolean = false;
-  @State feedbackOpen: boolean = false;
+  // 单一浮层状态：sheetMode 0=纠正 1=反馈
+  @State sheetOpen: boolean = false;
+  @State sheetMode: number = -1;
   @State viewerOpen: boolean = false;
   @State viewerScale: number = 1;
   @State viewerTx: number = 0;
@@ -83,31 +83,50 @@ export struct B_DailyComic {
     });
   }
 
-  @Builder
-  correctionContent() {
-    CorrectionSheetContent({
-      originalText: '默默把今天画成了一只下午打盹的小猫，因为你的专注时段之后有那么一点点疲惫。',
-      onDismiss: () => {
-        this.correctionOpen = false;
-      },
-      onApply: (text: string) => {
-        this.correctionOpen = false;
-        PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」');
-      }
-    })
+
+  // 打开纠正浮层
+  private openCorrection(): void {
+    if (this.sheetOpen) {
+      return;
+    }
+    this.sheetMode = 0;
+    this.sheetOpen = true;
   }
 
+  // 打开反馈浮层
+  private openFeedback(): void {
+    if (this.sheetOpen) {
+      return;
+    }
+    this.sheetMode = 1;
+    this.sheetOpen = true;
+  }
+
+  // 单一系统浮层：按 sheetMode 切换纠正/反馈内容（避免多 bindSheet 冲突）
   @Builder
-  feedbackContent() {
-    FeedbackSheetContent({
-      onDismiss: () => {
-        this.feedbackOpen = false;
-      },
-      onSubmit: (score: number, msg: string) => {
-        this.feedbackOpen = false;
-        PromptUtil.toast('已收到 ' + score.toString() + ' 星反馈，默默画得更好');
-      }
-    })
+  sheetBuilder() {
+    if (this.sheetMode !== 1) {
+      CorrectionSheetContent({
+        originalText: '默默把今天画成了一只下午打盹的小猫，因为你的专注时段之后有那么一点点疲惫。',
+        onDismiss: () => {
+          this.sheetOpen = false;
+        },
+        onApply: (text: string) => {
+          this.sheetOpen = false;
+          PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」');
+        }
+      })
+    } else if (this.sheetMode === 1) {
+      FeedbackSheetContent({
+        onDismiss: () => {
+          this.sheetOpen = false;
+        },
+        onSubmit: (score: number, msg: string) => {
+          this.sheetOpen = false;
+          PromptUtil.toast('已收到 ' + score.toString() + ' 星反馈，默默记住啦');
+        }
+      })
+    }
   }
 
   @Builder
@@ -130,7 +149,7 @@ export struct B_DailyComic {
       }, (p: ComicPage) => p.index.toString())
     }
     .width('100%')
-    .height(500)
+    .height(400)
     .itemSpace(14)
     .displayCount(1.22)
     .indicator(false)
@@ -154,7 +173,7 @@ export struct B_DailyComic {
     }
     .width('100%')
     .justifyContent(FlexAlign.Center)
-    .margin({ top: 16 })
+    .margin({ top: 10 })
   }
 
   @Builder
@@ -194,13 +213,13 @@ export struct B_DailyComic {
         } else {
           Scroll(this.scroller) {
             Column({ space: 12 }) {
-              Blank().height(28)
-              Text('漫画标题')
+              Blank().height(100)
+              Text('今日一页')
                 .fontSize(12)
                 .fontColor(Theme.TERTIARY)
                 .width('100%')
               Text(this.comic.title)
-                .fontSize(19)
+                .fontSize(17)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(Theme.PRIMARY)
                 .width('100%')
@@ -240,10 +259,10 @@ export struct B_DailyComic {
           Column() {
             DayBottomBar({
               onCorrect: () => {
-                this.correctionOpen = true;
+                this.openCorrection();
               },
               onFeedback: () => {
-                this.feedbackOpen = true;
+                this.openFeedback();
               },
               onDate: () => {
                 PromptUtil.toast('今日漫画仅支持查看当天（Mock）');
@@ -338,33 +357,18 @@ export struct B_DailyComic {
             .align(Alignment.Bottom)
             .margin({ bottom: 24 })
         }
-
-        // 纠正 / 反馈 浮窗
-        if (this.correctionOpen) {
-          GlassSheet({
-            show: true,
-            heightRatio: 0.86,
-            onDismiss: () => {
-              this.correctionOpen = false;
-            },
-            content: this.correctionContent
-          })
-        }
-        if (this.feedbackOpen) {
-          GlassSheet({
-            show: true,
-            heightRatio: 0.72,
-            onDismiss: () => {
-              this.feedbackOpen = false;
-            },
-            content: this.feedbackContent
-          })
-        }
       }
       .width('100%')
       .height('100%')
       .backgroundColor(Theme.BG)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      // 系统底部浮层（bindSheet 挂在目的地内层 Stack 上；官方示例亦绑定任意组件）
+      .bindSheet($$this.sheetOpen, this.sheetBuilder(), {
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+        dragBar: true,
+        backgroundColor: Theme.SHEET_BG,
+        showInSubWindow: false
+      })
     }
     .titleBar({
       padding: {
@@ -410,7 +414,8 @@ export struct B_DailyComic {
             { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
           ]
         }
-      }
+      },
+      avoidLayoutSafeArea: true
     })
     .hideBackButton(false)
     .backgroundColor(Theme.BG)

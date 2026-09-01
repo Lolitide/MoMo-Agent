@@ -4,7 +4,7 @@
  * ============================================================================
  * 【用途】二级页「今日状态」（HdsNavDestination 导航子页）：
  *   今日总结卡 + 今日事件时间线（可拖动收起）+ 默默的理解（两列网格），
- *   底部固定栏（纠正/日期/反馈），日历浮窗与纠正/反馈浮窗（GlassSheet）。
+ *   底部固定栏（纠正/日期/反馈），日历浮窗与纠正/反馈浮窗（bindSheet 系统浮层）。
  * 【前置条件 / 假设】
  *   - 依赖：HdsNavDestination(系统返回+标题栏沉浸)、EventRepository.getToday()、
  *     EventTimeline/MiniCalendar/StateViews/Sheets 组件；
@@ -33,7 +33,6 @@ import { Theme } from '../utils/Theme';
 import { PromptUtil } from '../utils/PromptUtil';
 import { EventTimeline } from '../components/EventTimeline';
 import { DayBottomBar } from '../components/DayBottomBar';
-import { GlassSheet } from '../components/GlassSheet';
 import { CorrectionSheetContent, FeedbackSheetContent } from '../components/Sheets';
 import { LoadingState, EmptyState, ErrorState } from '../components/StateViews';
 import { MiniCalendar } from '../components/MiniCalendar';
@@ -43,8 +42,9 @@ export struct B_TodayMemory {
   @State pageState: PageState = PageState.LOADING;
   @State daily: DailyMemory = new DailyMemory();
   @State scrollBlur: boolean = false;
-  @State correctionOpen: boolean = false;
-  @State feedbackOpen: boolean = false;
+  // 单一浮层状态：sheetMode 0=纠正 1=反馈
+  @State sheetOpen: boolean = false;
+  @State sheetMode: number = -1;
   @State calendarOpen: boolean = false;
   @State eventsH: number = 290;
   @State selectedDate: Date = new Date();
@@ -92,31 +92,50 @@ export struct B_TodayMemory {
     });
   }
 
-  @Builder
-  correctionContent() {
-    CorrectionSheetContent({
-      originalText: '默默认为你今天的心情总体平稳，但下午可能有些疲惫。',
-      onDismiss: () => {
-        this.correctionOpen = false;
-      },
-      onApply: (text: string) => {
-        this.correctionOpen = false;
-        PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」');
-      }
-    })
+
+  // 打开纠正浮层
+  private openCorrection(): void {
+    if (this.sheetOpen) {
+      return;
+    }
+    this.sheetMode = 0;
+    this.sheetOpen = true;
   }
 
+  // 打开反馈浮层
+  private openFeedback(): void {
+    if (this.sheetOpen) {
+      return;
+    }
+    this.sheetMode = 1;
+    this.sheetOpen = true;
+  }
+
+  // 单一系统浮层：按 sheetMode 切换纠正/反馈内容（避免多 bindSheet 冲突）
   @Builder
-  feedbackContent() {
-    FeedbackSheetContent({
-      onDismiss: () => {
-        this.feedbackOpen = false;
-      },
-      onSubmit: (score: number, msg: string) => {
-        this.feedbackOpen = false;
-        PromptUtil.toast('已收到 ' + score.toString() + ' 星反馈，默默记住了');
-      }
-    })
+  sheetBuilder() {
+    if (this.sheetMode !== 1) {
+      CorrectionSheetContent({
+        originalText: '默默认为你今天的心情总体平稳，但下午可能有些疲惫。',
+        onDismiss: () => {
+          this.sheetOpen = false;
+        },
+        onApply: (text: string) => {
+          this.sheetOpen = false;
+          PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」');
+        }
+      })
+    } else if (this.sheetMode === 1) {
+      FeedbackSheetContent({
+        onDismiss: () => {
+          this.sheetOpen = false;
+        },
+        onSubmit: (score: number, msg: string) => {
+          this.sheetOpen = false;
+          PromptUtil.toast('已收到 ' + score.toString() + ' 星反馈，默默记住啦');
+        }
+      })
+    }
   }
 
   @Builder
@@ -248,7 +267,7 @@ export struct B_TodayMemory {
         } else {
           Scroll(this.scroller) {
             Column({ space: 14 }) {
-              Blank().height(28)
+              Blank().height(100)
               this.summaryBlock()
               this.eventsBlock()
               this.insightsBlock()
@@ -268,10 +287,10 @@ export struct B_TodayMemory {
             DayBottomBar({
               date: this.selectedDate,
               onCorrect: () => {
-                this.correctionOpen = true;
+                this.openCorrection();
               },
               onFeedback: () => {
-                this.feedbackOpen = true;
+                this.openFeedback();
               },
               onDate: () => {
                 this.calendarOpen = true;
@@ -313,33 +332,18 @@ export struct B_TodayMemory {
           .height('100%')
           .alignItems(HorizontalAlign.Center)
         }
-
-        // 纠正 / 反馈 浮窗
-        if (this.correctionOpen) {
-          GlassSheet({
-            show: true,
-            heightRatio: 0.86,
-            onDismiss: () => {
-              this.correctionOpen = false;
-            },
-            content: this.correctionContent
-          })
-        }
-        if (this.feedbackOpen) {
-          GlassSheet({
-            show: true,
-            heightRatio: 0.72,
-            onDismiss: () => {
-              this.feedbackOpen = false;
-            },
-            content: this.feedbackContent
-          })
-        }
       }
       .width('100%')
       .height('100%')
       .backgroundColor(Theme.BG)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      // 系统底部浮层（bindSheet 挂在目的地内层 Stack 上；官方示例亦绑定任意组件）
+      .bindSheet($$this.sheetOpen, this.sheetBuilder(), {
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+        dragBar: true,
+        backgroundColor: Theme.SHEET_BG,
+        showInSubWindow: false
+      })
     }
     .titleBar({
       padding: {
@@ -385,9 +389,13 @@ export struct B_TodayMemory {
             { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
           ]
         }
-      }
+      },
+      avoidLayoutSafeArea: true
     })
     .hideBackButton(false)
     .backgroundColor(Theme.BG)
+    // 纠正 / 反馈：系统底部浮层（同添加页）
+    
+    
   }
 }

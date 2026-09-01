@@ -79,7 +79,7 @@ export struct B_About {
       Stack({ alignContent: Alignment.Top }) {
         Scroll() {
           Column({ space: 18 }) {
-            Blank().height(28)
+            Blank().height(100)
             Column({ space: 12 }) {
               Column() {
                 MoMoAvatar({ avatarSize: 132, state: MoMoState.IDLE })
@@ -199,7 +199,8 @@ export struct B_About {
         title: {
           mainTitle: '关于默默'
         }
-      }
+      },
+      avoidLayoutSafeArea: true
     })
     .hideBackButton(false)
     .backgroundColor(Theme.BG)
