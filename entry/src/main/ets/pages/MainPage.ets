@@ -23,16 +23,16 @@
  *   - MainPage：壳组件（持有 tabsCtrl：HdsTabsController、tab 状态、addOpen 浮窗状态）；
   // 路由表：HdsNavigation 通过 navDestination(this.pagesMap) 按路由名实例化二级页
  *   - MiniBarNode：全局 @Builder —— HdsTabs.miniBar 的“+”按钮（CustomBuilder 需无 this，
- *     故用全局函数 + MainPage.openAddStatic 静态跳板）；
+ *     故用全局函数 + // (removed) 静态跳板）；
  *   - pagesMap：navDestination 路由表（name -> 目标页面组件）。
  * 【参考源】
  *   - Examples/hdsNavigation Examples.md（HDS 标题栏/菜单/滚动模糊参数）
  *   - Examples/ihbest-ui 的 BasePage.ets（HdsNavDestination 封装思路）
- *   - SDK 声明：@kit.UIDesignKit（HdsNavigation/HdsTabs/ScrollEffectType）、@kit.ArkUI
+import { HdsNavigation, HdsNavigationTitleMode, HdsTabs, HdsTabsController, hdsMaterial, ScrollEffectType, HdsNavigationMenuContentOptions } from '@kit.UIDesignKit';
  * ============================================================================
  */
-import { HdsNavigation, HdsNavigationTitleMode, HdsTabs, HdsTabsController, HdsBarLayoutMode, ScrollEffectType, HdsNavigationMenuContentOptions } from '@kit.UIDesignKit';
-import { LengthMetrics, ComponentContent } from '@kit.ArkUI';
+import { HdsNavigation, HdsNavigationTitleMode, HdsTabs, HdsTabsController, hdsMaterial, ScrollEffectType, HdsNavigationMenuContentOptions } from '@kit.UIDesignKit';
+import { LengthMetrics } from '@kit.ArkUI';
 import { AppRouter, RouteName } from '../router/AppRouter';
 import { GardenController, CompanionService, TabController, HomeController, ShellState } from '../service/Services';
 import { UserRepository, MemoryRepository } from '../repository/Repositories';
@@ -40,6 +40,7 @@ import { Memory, MemoryType, MoMoState, GardenMode } from '../model/Models';
 import { GlassSheet } from '../components/GlassSheet';
 import { AddSheetContent } from '../components/Sheets';
 import { PromptUtil } from '../utils/PromptUtil';
+import { Theme } from '../utils/Theme';
 import { DateUtil } from '../utils/DateUtil';
 import { A_Home } from './A_Home';
 import { A_Garden } from './A_Garden';
@@ -48,50 +49,18 @@ import { B_TodayMemory } from './B_TodayMemory';
 import { B_DailyComic } from './B_DailyComic';
 import { B_About } from './B_About';
 
-// 全局 MiniBar 构建函数（HdsTabs.miniBar 的 CustomBuilder）
-@Builder
-function MiniBarNode() {
-  Column() {
-    SymbolGlyph($r('sys.symbol.plus')).fontSize(24).fontColor(['#1E2A22'])
-  }
-  .width(52)
-  .height(52)
-  .borderRadius(26)
-  .backgroundColor('rgba(250,252,249,0.92)')
-  .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
-  .border({ width: 1, color: 'rgba(255,255,255,0.92)' })
-  .shadow({ radius: 22, color: 'rgba(26,48,32,0.18)', offsetY: 6 })
-  .justifyContent(FlexAlign.Center)
-  .onClick(() => {
-    MainPage.openAddStatic();
-  })
-}
-
 @Entry
 @Component
 struct MainPage {
-  static openAddStatic: () => void = () => {
-  };
+
   @State tab: number = 0;
   @State addOpen: boolean = false;
   @State userName: string = '酪酪肽';
   private tabsCtrl: HdsTabsController = new HdsTabsController();
   private hi: string = '你好';
-  private miniBarContent: ComponentContent<Object> | null = null;
 
-  // 生命周期：注册加号静态跳板、创建 miniBar 的 ComponentContent、初始化昵称/问候语、
-  // 绑定 TabController/HomeController 桥、消费调试参数 autoNav（页面跳转或切 Tab）
-  // 生命周期：注册加号静态跳板、创建 miniBar 的 ComponentContent、初始化昵称/问候语、
-  // 绑定 TabController/HomeController 桥、消费调试参数 autoNav（页面跳转或切 Tab）
+  // 生命周期：初始化昵称/问候语、绑定 TabController/HomeController 桥、消费调试参数 autoNav（页面跳转或切 Tab）
   aboutToAppear(): void {
-    MainPage.openAddStatic = () => {
-      this.openAdd();
-    };
-    try {
-      this.miniBarContent = new ComponentContent(this.getUIContext(), wrapBuilder(MiniBarNode)) as ComponentContent<Object>;
-    } catch (e) {
-      this.miniBarContent = null;
-    }
     this.userName = UserRepository.get().getUser().name;
     this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
     TabController.switch = (index: number) => {
@@ -127,7 +96,6 @@ struct MainPage {
     }
   }
 
-  // 打开“记一笔”浮窗：花园 Tab 先收起详情；首页同时把默默切到倾听态（LISTENING）
   // 打开“记一笔”浮窗：花园 Tab 先收起详情；首页同时把默默切到倾听态（LISTENING）
   private openAdd(): void {
     if (this.tab === 1) {
@@ -217,18 +185,45 @@ struct MainPage {
   }
 
   @Builder
-  tabItem(icon: Resource, selIcon: Resource, label: string, index: number) {
-    Column({ space: 2 }) {
-      SymbolGlyph(this.tab === index ? selIcon : icon)
+  tabBuilder(index: number) {
+    Column() {
+      SymbolGlyph(this.tabIcon(index))
         .fontSize(24)
-        .fontColor([this.tab === index ? '#3E6B4B' : '#8CA089'])
-      Text(label)
-        .fontSize(10)
-        .fontColor(this.tab === index ? '#3E6B4B' : '#9BAC9F')
+        .fontColor([this.tab === index ? '#97FFAB' : '#9A9B94'])
     }
     .width('100%')
-    .height('100%')
     .justifyContent(FlexAlign.Center)
+    .padding({ top: 6, bottom: 6 })
+  }
+
+  private tabIcon(index: number): Resource {
+    if (index === 0) {
+      return $r('sys.symbol.house');
+    } else if (index === 1) {
+      return $r('sys.symbol.leaf');
+    }
+    return $r('sys.symbol.gearshape');
+  }
+
+  // 分离加号（miniBar）：与导航栏一致样式（白色半透明 + 细边框 + 主色图标），仅作为按钮
+  @Builder
+  miniBarBuilder() {
+    Stack() {
+      SymbolGlyph($r('sys.symbol.plus'))
+        .fontSize(24)
+        .fontColor(['#6FDF8E'])
+    }
+    .width(56)
+    .height(56)
+    .borderRadius(28)
+    .backgroundColor('#F2FFFFFF')
+    .backdropBlur(20)
+    .border({ width: 1, color: Theme.CARD_BORDER })
+    .shadow({ radius: 14, color: '#22000000', offsetX: 0, offsetY: 4 })
+    .onClick(() => {
+      this.openAdd();
+    })
+    .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.92 })
   }
 
   build() {
@@ -238,39 +233,39 @@ struct MainPage {
           TabContent() {
             A_Home()
           }
-          .tabBar(this.tabItem($r('sys.symbol.house'), $r('sys.symbol.house_fill'), '首页', 0))
+          .tabBar(this.tabBuilder(0))
 
           TabContent() {
             A_Garden()
           }
-          .tabBar(this.tabItem($r('sys.symbol.leaf'), $r('sys.symbol.leaf_fill'), '花园', 1))
+          .tabBar(this.tabBuilder(1))
 
           TabContent() {
             A_Settings()
           }
-          .tabBar(this.tabItem($r('sys.symbol.gearshape'), $r('sys.symbol.gearshape_fill'), '设置', 2))
+          .tabBar(this.tabBuilder(2))
         }
+        .width('100%')
+        .height('100%')
+        .scrollable(false)
         .barPosition(BarPosition.End)
-        .scrollable(true)
-        .animationDuration(260)
-        .barMode(BarMode.Fixed)
-        .barHeight(64)
         .barOverlap(true)
-        .barBackgroundColor('rgba(250,252,249,0.0)')
+        .vertical(false)
+        .barBackgroundBlurStyle(BlurStyle.Thin)
+        // 悬浮光感：底部大边距 + 全宽渐变光罩(#66F1F3F5/92) + 系统沉浸材质(IMMERSIVE/ADAPTIVE)
         .barFloatingStyle({
-          barWidth: { smallWidth: 250, mediumWidth: 280, largeWidth: 320 },
-          barSideMargin: 20,
-          barBottomMargin: 8,
-          gradientMask: { maskColor: 'rgba(247,250,244,0.96)', maskHeight: 64 },
-          lightColor: '#97FFAB',
-          systemMaterialEffect: { materialType: 100, materialLevel: 10 },
-          barOpacity: 1,
-          miniBar: {
-            miniBarBuilder: this.miniBarContent ?? MiniBarNode,
-            barLayoutMode: HdsBarLayoutMode.HORIZONTAL
+          barBottomMargin: 28,
+          gradientMask: { maskColor: '#66F1F3F5', maskHeight: 92 },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.IMMERSIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
           },
-          adaptToHandedness: false
+          miniBar: {
+            miniBarBuilder: (): void => this.miniBarBuilder(),
+            enableMiniBarClip: true
+          }
         })
+        .animationDuration(0)
         .onChange((index: number) => {
           this.tab = index;
           if (index === 0) {
