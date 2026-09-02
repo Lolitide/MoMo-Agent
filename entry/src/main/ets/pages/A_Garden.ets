@@ -109,6 +109,8 @@ export struct A_Garden {
       AppRouter.push(RouteName.SEARCH);
     };
     GardenController.openMenu = () => {
+      // 打开模式菜单前先收起节点详情系统浮层（模态浮层会挡住标题栏，导致无法切换模式）
+      this.detailOpen = false;
       this.menuOpen = true;
     };
     setTimeout(() => {
@@ -140,8 +142,14 @@ export struct A_Garden {
       } else {
         const first = this.repo.getById('m4');
         if (first !== null) {
-          // 首次进入默认打开节点详情（系统浮层，查看模式）
-          this.selectMemory(first);
+          if (this.mode === GardenMode.GARDEN) {
+            // 花园模式：默认选中并打开节点详情（系统浮层，查看模式）
+            this.selectMemory(first);
+          } else {
+            // 大纲/记忆树：仅高亮首个节点，不弹浮层
+            this.selectedMemory = first;
+            this.detailOpen = false;
+          }
         }
       }
     }, 400);
@@ -339,39 +347,42 @@ export struct A_Garden {
 
   @Builder
   outlineView() {
-    Scroll(this.outlineScroller) {
-      Column({ space: 0 }) {
-        Blank().height(100)
-        ForEach(this.sortedMemories(), (m: Memory) => {
-          Row() {
-            Column() {
-              Row()
-                .width(12).height(12).borderRadius(6)
-                .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
-                  ? '#5FC77E' : '#B9DCC4')
-              Row().width(2).height(184)
-                .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
-                  ? 'rgba(95,199,126,0.5)' : '#DCE9DF')
-            }
-            .width(40)
-            .alignItems(HorizontalAlign.Center)
+    Stack({ alignContent: Alignment.Top }) {
+      Scroll(this.outlineScroller) {
+        Column({ space: 0 }) {
+          Blank().height(132)
+          ForEach(this.sortedMemories(), (m: Memory) => {
+            Row() {
+              // 时间轴列：连续线（上下各延伸 14vp 与相邻条目衔接）+ 节点对准卡片中部
+              Column() {
+                Row()
+                  .width(2)
+                  .height(Math.max(this.outlineItemH(m), 60) + 28)
+                  .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                    ? 'rgba(95,199,126,0.5)' : '#DCE9DF')
+                  .margin({ top: -14 })
+                Row()
+                  .width(12)
+                  .height(12)
+                  .borderRadius(6)
+                  .backgroundColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                    ? '#5FC77E' : '#B9DCC4')
+                  .position({ y: Math.max(this.outlineItemH(m), 60) / 2 - 6 })
+              }
+              .width(40)
+              .height(Math.max(this.outlineItemH(m), 60))
+              .alignItems(HorizontalAlign.Center)
 
-            Column({ space: 10 }) {
-              Text(m.date)
-                .fontSize(15)
-                .fontWeight(this.selectedMemory !== null && this.selectedMemory.id === m.id
-                  ? FontWeight.Bold : FontWeight.Medium)
-                .fontColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
-                  ? '#3FA55F' : Theme.SECONDARY)
+              // 卡片：高度随内容（标题最多 2 行、摘要 2 行、标签 1 行）
               Column({ space: 8 }) {
                 Row() {
-                  Text(m.title)
-                    .fontSize(15)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor(Theme.PRIMARY)
-                    .layoutWeight(1)
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(m.date)
+                    .fontSize(14)
+                    .fontWeight(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                      ? FontWeight.Bold : FontWeight.Medium)
+                    .fontColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
+                      ? '#3FA55F' : Theme.SECONDARY)
+                  Blank()
                   Text(MemoryTypeUtil.nameOf(m.type))
                     .fontSize(10)
                     .fontColor(MemoryTypeUtil.colorOf(m.type))
@@ -380,12 +391,22 @@ export struct A_Garden {
                     .borderRadius(9)
                 }
                 .width('100%')
+
+                Text(m.title)
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(Theme.PRIMARY)
+                  .width('100%')
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+
                 Text(m.summary)
                   .fontSize(13)
                   .fontColor(Theme.SECONDARY)
                   .width('100%')
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
+
                 Row({ space: 6 }) {
                   ForEach(m.tags.slice(0, 3), (t: string) => {
                     Text(t)
@@ -410,24 +431,55 @@ export struct A_Garden {
               .onClick(() => {
                 this.selectMemory(m);
               })
+              .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.97 })
             }
-            .layoutWeight(1)
-            .margin({ bottom: 6 })
-          }
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
+            .padding({ right: 20 })
+            .margin({ bottom: 14 })
+          }, (m: Memory) => m.id)
+          Blank().height(240)
+        }
+        .width('100%')
+        .padding({ left: 20 })
+      }
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
+      .onScroll((offset: number) => {
+        this.outlineScroll = offset;
+      })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      // 沉浸式标题遮罩：滚动时顶部渐变模糊（参考沉浸标题栏动态模糊做法）
+      Column() {
+        Column()
           .width('100%')
-          .alignItems(VerticalAlign.Top)
-        }, (m: Memory) => m.id)
-        Blank().height(230)
+          .height('100%')
+          .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
+          .backgroundColor('rgba(247,250,244,0.82)')
+        Column()
+          .width('100%')
+          .height(22)
+          .linearGradient({
+            angle: 180,
+            colors: [['#D2F7FAF4', 0], ['#00F7FAF4', 1]]
+          })
+          .position({ y: 148 })
       }
       .width('100%')
-      .padding({ left: 20, right: 20 })
+      .height(170)
+      .opacity(this.outlineScroll > 12 ? 1 : 0)
+      .animation({ duration: 200, curve: Curve.EaseOut })
     }
-    .scrollBar(BarState.Off)
-    .edgeEffect(EdgeEffect.Spring)
-    .onScroll((offset: number) => {
-      this.outlineScroll = offset;
-    })
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .width('100%')
+    .height('100%')
+  }
+
+  // 估算大纲卡片高度（标题/摘要按字符数折行）：用于时间轴连接线高度
+  private outlineItemH(m: Memory): number {
+    const titleLines = m.title.length > 26 ? 2 : 1;
+    const sumLines = m.summary.length > 42 ? 2 : 1;
+    return 62 + titleLines * 21 + sumLines * 19 + 24;
   }
 
   @Builder
