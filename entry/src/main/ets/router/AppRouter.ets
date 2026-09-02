@@ -21,6 +21,7 @@ export class RouteName {
   static readonly TODAY_MEMORY: string = 'B_TodayMemory';
   static readonly DAILY_COMIC: string = 'B_DailyComic';
   static readonly ABOUT: string = 'B_About';
+  static readonly SEARCH: string = 'B_Search';
 }
 
 class EmptyParam {

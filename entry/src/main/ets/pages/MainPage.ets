@@ -47,6 +47,7 @@ import { A_Settings } from './A_Settings';
 import { B_TodayMemory } from './B_TodayMemory';
 import { B_DailyComic } from './B_DailyComic';
 import { B_About } from './B_About';
+import { B_Search } from './B_Search';
 
 @Entry
 @Component
@@ -79,6 +80,8 @@ struct MainPage {
           AppRouter.push(RouteName.DAILY_COMIC);
         } else if (nav === 'B_About') {
           AppRouter.push(RouteName.ABOUT);
+        } else if (nav === 'garden-search') {
+          AppRouter.push(RouteName.SEARCH);
         } else if (nav === 'garden-outline') {
           TabController.switch(1);
           GardenController.modeOverride = GardenMode.OUTLINE;
@@ -180,6 +183,8 @@ struct MainPage {
       B_DailyComic()
     } else if (name === 'B_About') {
       B_About()
+    } else if (name === 'B_Search') {
+      B_Search()
     }
   }
 

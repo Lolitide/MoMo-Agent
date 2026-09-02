@@ -27,6 +27,7 @@
  */
 import { MemoryRepository } from '../repository/Repositories';
 import { GardenController } from '../service/Services';
+import { AppRouter, RouteName } from '../router/AppRouter';
 import { MockData } from '../mock/MockData';
 import {
   GardenMode, GardenNodeItem, Memory, MemoryTreeNode, MemoryType, MemoryTypeUtil, PageState
@@ -79,6 +80,7 @@ export struct A_Garden {
   };
   private panBase: number = 196;
   private gardenScroller: Scroller = ShellState.gardenScroller;
+  private outlineScroller: Scroller = new Scroller();
 
   // 生命周期：注册仓库监听（记忆变化重载）、HDS 菜单桥（搜索/更多/收起详情）、
   // 400ms 后读取初始记忆并默认选中 m4 打开详情面板
@@ -103,7 +105,8 @@ export struct A_Garden {
       this.detailH = 196;
     };
     GardenController.openSearch = () => {
-      this.searchOpen = true;
+      // 搜索改为独立子页 B_Search（HdsNavigation 压栈）；返回后按 pendingFocus 聚焦
+      AppRouter.push(RouteName.SEARCH);
     };
     GardenController.openMenu = () => {
       this.menuOpen = true;
@@ -111,10 +114,35 @@ export struct A_Garden {
     setTimeout(() => {
       this.memories = this.repo.getAll();
       this.pageState = PageState.SUCCESS;
-      const first = this.repo.getById('m4');
-      if (first !== null) {
-        // 首次进入默认打开节点详情（系统浮层，查看模式）
-        this.selectMemory(first);
+      if (GardenController.pendingFocusId !== '') {
+        // 从搜索页返回：按进入搜索前的视图模式聚焦
+        const target = this.repo.getById(GardenController.pendingFocusId);
+        GardenController.pendingFocusId = '';
+        if (target !== null) {
+          if (this.mode === GardenMode.OUTLINE) {
+            // 大纲模式：选中该记忆并滚动到条目所在位置（行高约 196vp）
+            this.selectMemory(target);
+            const idx = this.sortedMemories().findIndex((mm: Memory) => mm.id === target.id);
+            if (idx >= 0) {
+              setTimeout(() => {
+                this.outlineScroller.scrollTo({
+                  xOffset: 0,
+                  yOffset: Math.max(idx * 196 - 200, 0),
+                  animation: { duration: 320, curve: Curve.EaseOut }
+                });
+              }, 200);
+            }
+          } else {
+            // 花园模式：选中节点（带选中环+详情浮层）；记忆树模式：高亮该节点
+            this.selectMemory(target);
+          }
+        }
+      } else {
+        const first = this.repo.getById('m4');
+        if (first !== null) {
+          // 首次进入默认打开节点详情（系统浮层，查看模式）
+          this.selectMemory(first);
+        }
       }
     }, 400);
   }
@@ -311,7 +339,7 @@ export struct A_Garden {
 
   @Builder
   outlineView() {
-    Scroll(this.gardenScroller) {
+    Scroll(this.outlineScroller) {
       Column({ space: 0 }) {
         Blank().height(100)
         ForEach(this.sortedMemories(), (m: Memory) => {
