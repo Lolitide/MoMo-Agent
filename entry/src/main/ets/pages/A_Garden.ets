@@ -42,6 +42,15 @@ import { MemoryTreeGraph } from '../components/MemoryTreeGraph';
 import { GlassSheet } from '../components/GlassSheet';
 import { LoadingState, EmptyState } from '../components/StateViews';
 
+// 编辑快照：记录“某一条记忆”编辑前/后状态（用于按记忆隔离的撤销/重做）
+interface EditSnapshot {
+  id: string;
+  title: string;
+  tags: string[];
+  summary: string;
+  label: string;
+}
+
 @Component
 export struct A_Garden {
   @State pageState: PageState = PageState.LOADING;
@@ -54,8 +63,11 @@ export struct A_Garden {
   @State searchText: string = '';
   @State detailOpen: boolean = false;
   @State editorMode: boolean = false;
-  @State undoStack: string[] = [];
-  @State redoStack: string[] = [];
+  // 撤销/重做：按记忆 id 隔离（内存表 + 当前记忆的 @State 副本用于刷新 UI）
+  private undoMaps: Map<string, EditSnapshot[]> = new Map();
+  private redoMaps: Map<string, EditSnapshot[]> = new Map();
+  @State undoStack: EditSnapshot[] = [];
+  @State redoStack: EditSnapshot[] = [];
   @State treeZoom: number = 1;
   @State outlineScroll: number = 0;
   @State editTitle: string = '';
@@ -148,6 +160,9 @@ export struct A_Garden {
     this.editTitle = m.title;
     this.editTags = m.tags.join('，');
     this.editSummary = m.summary;
+    // 撤销/重做仅针对当前记忆（从按 id 隔离的栈加载）
+    this.undoStack = this.undoMaps.get(m.id) ?? [];
+    this.redoStack = this.redoMaps.get(m.id) ?? [];
     // 打开“节点详情”系统浮层（查看模式）；下拖/点遮罩退出时 bindSheet 系统动画下移出屏
     this.editorMode = false;
     this.detailOpen = true;
@@ -248,8 +263,6 @@ export struct A_Garden {
           }
           const title = this.selectedMemory.title;
           this.repo.delete(this.selectedMemory.id);
-          this.undoStack = this.undoStack.concat(['删除「' + title + '」']);
-          this.redoStack = [];
           this.selectedMemory = null;
           this.detailH = 196;
           PromptUtil.toast('已删除「' + title + '」');
@@ -537,14 +550,39 @@ export struct A_Garden {
         .justifyContent(FlexAlign.Center)
         .opacity(this.undoStack.length > 0 ? 1 : 0.55)
         .onClick(() => {
-          if (this.undoStack.length === 0) {
-            PromptUtil.toast('没有可以撤销的操作');
+          if (this.selectedMemory === null || this.undoStack.length === 0) {
+            PromptUtil.toast('当前记忆没有可以撤销的操作');
             return;
           }
-          const last = this.undoStack[this.undoStack.length - 1];
-          this.undoStack = this.undoStack.slice(0, this.undoStack.length - 1);
-          this.redoStack.push(last);
-          PromptUtil.toast('已撤销：' + last);
+          const m = this.selectedMemory;
+          const snap = this.undoStack[this.undoStack.length - 1];
+          if (snap.id !== m.id) {
+            PromptUtil.toast('当前记忆没有可以撤销的操作');
+            return;
+          }
+          // 当前状态存入重做栈
+          const cur: EditSnapshot = {
+            id: m.id,
+            title: m.title,
+            tags: m.tags.slice(),
+            summary: m.summary,
+            label: snap.label
+          };
+          m.title = snap.title;
+          m.tags = snap.tags.slice();
+          m.summary = snap.summary;
+          this.repo.update(m);
+          this.undoMaps.set(m.id, this.undoStack.slice(0, this.undoStack.length - 1));
+          this.redoMaps.set(m.id, this.redoStack.concat([cur]));
+          this.undoStack = this.undoMaps.get(m.id) ?? [];
+          this.redoStack = this.redoMaps.get(m.id) ?? [];
+          // 实时刷新：选中引用 + 表单 + 视口
+          const fresh = this.repo.getById(m.id);
+          this.selectedMemory = fresh !== null ? fresh : m;
+          this.editTitle = this.selectedMemory.title;
+          this.editTags = this.selectedMemory.tags.join('，');
+          this.editSummary = this.selectedMemory.summary;
+          PromptUtil.toast('已撤销：' + snap.label);
         })
         .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.9 })
 
@@ -557,14 +595,37 @@ export struct A_Garden {
         .justifyContent(FlexAlign.Center)
         .opacity(this.redoStack.length > 0 ? 1 : 0.55)
         .onClick(() => {
-          if (this.redoStack.length === 0) {
-            PromptUtil.toast('没有可以重做的操作');
+          if (this.selectedMemory === null || this.redoStack.length === 0) {
+            PromptUtil.toast('当前记忆没有可以重做的操作');
             return;
           }
-          const last = this.redoStack[this.redoStack.length - 1];
-          this.redoStack = this.redoStack.slice(0, this.redoStack.length - 1);
-          this.undoStack.push(last);
-          PromptUtil.toast('已重做：' + last);
+          const m = this.selectedMemory;
+          const snap = this.redoStack[this.redoStack.length - 1];
+          if (snap.id !== m.id) {
+            PromptUtil.toast('当前记忆没有可以重做的操作');
+            return;
+          }
+          const cur: EditSnapshot = {
+            id: m.id,
+            title: m.title,
+            tags: m.tags.slice(),
+            summary: m.summary,
+            label: snap.label
+          };
+          m.title = snap.title;
+          m.tags = snap.tags.slice();
+          m.summary = snap.summary;
+          this.repo.update(m);
+          this.redoMaps.set(m.id, this.redoStack.slice(0, this.redoStack.length - 1));
+          this.undoMaps.set(m.id, this.undoStack.concat([cur]));
+          this.undoStack = this.undoMaps.get(m.id) ?? [];
+          this.redoStack = this.redoMaps.get(m.id) ?? [];
+          const fresh = this.repo.getById(m.id);
+          this.selectedMemory = fresh !== null ? fresh : m;
+          this.editTitle = this.selectedMemory.title;
+          this.editTags = this.selectedMemory.tags.join('，');
+          this.editSummary = this.selectedMemory.summary;
+          PromptUtil.toast('已重做：' + snap.label);
         })
         .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.9 })
       }
@@ -779,6 +840,14 @@ export struct A_Garden {
               return;
             }
             const m = this.selectedMemory;
+            // 编辑前快照（存入该记忆自己的撤销栈，保证撤销/重做只在当前记忆生效）
+            const snap: EditSnapshot = {
+              id: m.id,
+              title: m.title,
+              tags: m.tags.slice(),
+              summary: m.summary,
+              label: '编辑「' + m.title + '」'
+            };
             if (this.editTitle.trim() !== '') {
               m.title = this.editTitle.trim();
             }
@@ -793,10 +862,19 @@ export struct A_Garden {
             m.tags = tags;
             m.summary = this.editSummary.trim();
             this.repo.update(m);
-            this.selectedMemory = m;
-            this.undoStack = this.undoStack.concat(['编辑「' + m.title + '」']);
+            // 刷新选中引用与表单（实时刷新）
+            const fresh = this.repo.getById(m.id);
+            this.selectedMemory = fresh !== null ? fresh : m;
+            this.editTitle = this.selectedMemory.title;
+            this.editTags = this.selectedMemory.tags.join('，');
+            this.editSummary = this.selectedMemory.summary;
+            this.undoMaps.set(m.id, this.undoStack.concat([snap]));
+            this.redoMaps.set(m.id, []);
+            this.undoStack = this.undoMaps.get(m.id) ?? [];
             this.redoStack = [];
-            this.editorMode = false;
+            animateTo({ duration: 240, curve: Curve.EaseOut }, () => {
+              this.editorMode = false;
+            });
             PromptUtil.toast('已保存修改');
           })
         Button('取消')
