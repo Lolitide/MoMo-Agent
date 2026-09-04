@@ -204,7 +204,8 @@ export struct A_Home {
           Column() {
             MoMoAvatar({
               avatarSize: this.avSize,
-              state: this.momoState
+              state: this.momoState,
+              interactive: true
             })
           }
           .width('100%')

@@ -2,276 +2,167 @@
  * ============================================================================
  * 文件名：components/MoMoAvatar.ets
  * ============================================================================
- * 【用途】默默软体角色组件：用 Canvas 程序化绘制一只“软体果冻”角色，
- *   依据 MoMoState 状态切换表情/眼睛/雀斑/腮红/闪光，并施加 spring 摆动动画。
+ * 【用途】默默软体角色组件：以 spring 驱动的角色引擎（引擎移植自
+ *   Web 项目 grok-icon-study-web 的 GrokCharacter，MIT 许可）驱动
+ *   Canvas 绘制，实现 39 种状态行为 / 弹簧运动 / 多边形眼睛 morph /
+ *   眨眼 / 视线 / wink / 自动 tricks / overlay 特效。
  * 【前置条件 / 假设】
- *   - 依赖：MoMoState（模型枚举）、Theme（配色）、DateUtil；
- *   - 假设：Canvas 每帧重绘成本可控（手机屏幕小题量）；API 24+（CanvasRenderingContext2D 可用）；
- *   - 属性：avatarSize(直径，vp)、state(状态)、reactive(是否响应点击/转动)。
+ *   - 依赖：MoMoState（模型枚举）、momo/MoMoEngine（纯引擎类）、
+ *     momo/MoMoGeoData（原创几何，非 Grok 商业数据）；
+ *   - 假设：DisplaySync（@kit.ArkGraphics2D，API 11+）提供 60fps 帧回调；
+ *     组件销毁/页面隐藏时停止帧同步，避免后台绘制；API 22+；
+ *   - 属性：avatarSize(直径 vp)、state(状态)、interactive(是否响应触摸)。
  * 【输入 / 输出（后置条件）】
- *   - 输入：state 变化（CompanionService 驱动）、avatarSize 变化（首页滚动缩放）；
- *   - 输出：Canvas 重绘一颗新状态的脸；附带轻微呼吸/弹性动画。
+ *   - 输入：state 变化（CompanionService 驱动）、avatarSize 变化（首页滚动缩放）、
+ *     interactive 时触摸（点击 spin / 长按 bounce / 拖移眼神跟随）；
+ *   - 输出：Engine 驱动 Canvas 每帧重绘 spring 动画角色。
  * 【关键类 / 算法】
- *   - draw(): 画身体（中心椭圆 + 阴影）+ 五官（眼睛/嘴/腮红/雀斑）+ 状态装饰；
- *   - 状态映射表：MoMoState(8 种) -> 眼睛/嘴巴/装饰组合；
- *   - spring 摆动：基于时间的 sin 衰减（伪弹簧），轻量无需物理引擎。
+ *   - MoMoEngine.tick：状态机 + 弹簧积分 + 眼睛/眨眼/视线/tricks；
+ *   - MoMoEngine.paint：世界系 0..200 -> sizePx 缩放绘制；
+ *   - DisplaySync：帧对齐的驱动源（@ohos.graphics.displaySync，API 11+）。
  * 【参考源】
- *   - Web_proj/grok-icon-study-web（spring 驱动 39 状态软体角色引擎，本项目参考其状态表现）
- *   - HarmonyOS Canvas 官方文档（CanvasRenderingContext2D）
+ *   - Web_proj/grok-icon-study-web（MIT）：引擎逻辑移植，几何为 MoMo 自绘；
+ *     配色沿用 MoMo Theme 绿系与现 MoMoAvatar 质感。
  * ============================================================================
  */
+import { displaySync } from '@kit.ArkGraphics2D';
 import { MoMoState } from '../model/Models';
+import { MoMoEngine, MoMoEngineOptions } from './momo/MoMoEngine';
 
 @Component
 export struct MoMoAvatar {
   @Prop avatarSize: number = 200;
-  @Prop state: MoMoState = MoMoState.IDLE;
+  @Prop @Watch('onStateChange') state: MoMoState = MoMoState.IDLE;
+  @Prop interactive: boolean = false;
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
-  private timerId: number = -1;
-  private t: number = 0;
-  private w: number = 0;
-  private h: number = 0;
+  private engine: MoMoEngine | null = null;
+  private ds: displaySync.DisplaySync | null = null;
+  private lastNs: number = 0;
+  private cvReady: boolean = false;
+
+  private mapState(s: MoMoState): string {
+    switch (s) {
+      case MoMoState.CURIOUS:
+        return 'curious';
+      case MoMoState.HAPPY:
+        return 'happy';
+      case MoMoState.THINKING:
+        return 'thinking';
+      case MoMoState.LISTENING:
+        return 'listening';
+      case MoMoState.SLEEPING:
+        return 'sleeping';
+      default:
+        return 'idle';
+    }
+  }
+
+  onStateChange(propName: string): void {
+    void propName;
+    if (this.engine) {
+      this.engine.setState(this.mapState(this.state), false);
+    }
+  }
 
   aboutToAppear(): void {
-    if (this.timerId < 0) {
-      this.timerId = setInterval(() => {
-        this.t += 0.016;
-        if (this.w > 0) {
-          this.drawFrame();
-        }
-      }, 16);
+    if (!this.engine) {
+      this.engine = new MoMoEngine(new MoMoEngineOptions());
+      this.engine.setState(this.mapState(this.state), true);
+    }
+    this.lastNs = 0;
+    if (!this.ds) {
+      this.ds = displaySync.create();
+      this.ds.setExpectedFrameRateRange({ min: 60, max: 120, expected: 60 });
+      this.ds.on('frame', (info: displaySync.IntervalInfo) => {
+        this.onFrame(info);
+      });
+      this.ds.start();
     }
   }
 
   aboutToDisappear(): void {
-    if (this.timerId >= 0) {
-      clearInterval(this.timerId);
-      this.timerId = -1;
+    if (this.ds) {
+      this.ds.stop();
+      this.ds.off('frame');
+      this.ds = null;
+    }
+    this.cvReady = false;
+  }
+
+  private onFrame(info: displaySync.IntervalInfo): void {
+    const ns = info.timestamp;
+    if (this.lastNs <= 0) {
+      this.lastNs = ns;
+      return;
+    }
+    let dtMs = (ns - this.lastNs) / 1e6;
+    this.lastNs = ns;
+    if (!Number.isFinite(dtMs) || dtMs < 0 || dtMs > 100) {
+      dtMs = 16.67;
+    }
+    if (!this.cvReady) {
+      return;
+    }
+    const nowMs = ns / 1e6;
+    if (this.engine) {
+      // 目标 = 组件当前尺寸（首页滚动时引擎弹簧跟随 → 惯性回弹观感）
+      this.engine.setViewTarget(this.avatarSize);
+      this.engine.tick(nowMs, dtMs / 1000);
+      this.engine.paint(this.ctx, this.avatarSize);
     }
   }
 
-  private smooth(a: number, b: number, t: number): number {
-    const u = t < 0 ? 0 : (t > 1 ? 1 : t);
-    const v = u * u * (3 - 2 * u);
-    return a + (b - a) * v;
+  private onTouched(ev: TouchEvent): void {
+    if (!this.interactive || !this.engine) {
+      return;
+    }
+    if (ev.touches && ev.touches.length > 0) {
+      const t = ev.touches[0];
+      if (ev.type === TouchType.Down || ev.type === TouchType.Move) {
+        this.engine.pointerTo(t.x, t.y, this.avatarSize);
+      }
+    }
+    if (ev.type === TouchType.Up || ev.type === TouchType.Cancel) {
+      this.engine.clearPointer();
+    }
   }
 
-  private pathBlob(cx: number, cy: number, r: number, phase: number, amp: number): void {
-    const N = 18;
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (let i = 0; i < N; i++) {
-      const ang = (i / N) * Math.PI * 2;
-      const wob = 1 + amp * Math.sin(ang * 3 + phase) + amp * 0.5 * Math.sin(ang * 5 - phase * 0.7);
-      xs.push(cx + Math.cos(ang) * r * wob);
-      ys.push(cy + Math.sin(ang) * r * wob);
+  private onTap(): void {
+    if (!this.interactive || !this.engine) {
+      return;
     }
-    this.ctx.beginPath();
-    this.ctx.moveTo((xs[0] + xs[N - 1]) / 2, (ys[0] + ys[N - 1]) / 2);
-    for (let i = 0; i < N; i++) {
-      const ni = (i + 1) % N;
-      const mx = (xs[i] + xs[ni]) / 2;
-      const my = (ys[i] + ys[ni]) / 2;
-      this.ctx.quadraticCurveTo(xs[i], ys[i], mx, my);
-    }
-    this.ctx.closePath();
+    this.engine.spinOnce(1);
   }
 
-  private drawFrame(): void {
-    const ctx = this.ctx;
-    const R = Math.min(this.avatarSize, this.avatarSize) * 0.30;
-    const cx = this.avatarSize / 2;
-    const cy = this.avatarSize / 2;
-    const phase = this.t * 1.9;
-    ctx.clearRect(0, 0, this.w, this.h);
-
-    // soft ground shadow
-    ctx.save();
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = '#3E7D52';
-    ctx.beginPath();
-    ctx.ellipse(cx, this.avatarSize * 0.92, R * 0.62, R * 0.16, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    const st = this.state;
-    const listen = st === MoMoState.LISTENING;
-    const sleep = st === MoMoState.SLEEPING;
-    const happy = st === MoMoState.HAPPY;
-    const think = st === MoMoState.THINKING;
-
-    // vertical bob & squash
-    let bob = Math.sin(phase * 0.9) * R * 0.05;
-    let squash = 1 + Math.sin(phase * 1.8) * 0.035;
-    if (happy) {
-      bob = -Math.abs(Math.sin(phase * 1.1)) * R * 0.12;
-      squash = 1 + Math.abs(Math.sin(phase * 1.1)) * 0.09;
+  private onLongPress(): void {
+    if (!this.interactive || !this.engine) {
+      return;
     }
-    if (sleep) {
-      bob = Math.sin(phase * 0.5) * R * 0.015;
-      squash = 1 + Math.sin(phase * 0.5) * 0.015;
-    }
-    if (think) {
-      squash = 1 + Math.sin(phase * 1.4) * 0.02;
-    }
-
-    ctx.save();
-    ctx.translate(cx, cy + bob);
-    ctx.scale(2 - squash, squash);
-
-    // body gradient
-    const grad = ctx.createRadialGradient(-R * 0.3, -R * 0.35, R * 0.12, 0, 0, R * 1.25);
-    grad.addColorStop(0, '#F6FDF7');
-    grad.addColorStop(0.55, '#DDF6E4');
-    grad.addColorStop(1, '#BBEFC9');
-    ctx.fillStyle = grad;
-
-    const amp = sleep ? 0.012 : (listen ? 0.03 : 0.05);
-    this.pathBlob(0, 0, R, phase, amp);
-    ctx.fill();
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = 'rgba(122, 209, 148, 0.55)';
-    ctx.stroke();
-
-    // face
-    const eyeY = -R * 0.06;
-    const eyeGap = R * 0.36;
-    const eyeRx = R * 0.145;
-    const eyeRyBase = R * 0.19;
-    const blinkCycle = (this.t * 0.9) % 3.4;
-    let blink = 1;
-    if (blinkCycle < 0.13) {
-      blink = 0.12;
-    }
-    if (sleep) {
-      blink = 0.06;
-    }
-    let gazeX = Math.sin(this.t * 0.7) * R * 0.05;
-    let gazeY = Math.cos(this.t * 0.5) * R * 0.04;
-    if (think) {
-      gazeX = R * 0.07;
-      gazeY = -R * 0.08;
-    }
-    if (listen) {
-      gazeX = 0;
-      gazeY = R * 0.02;
-    }
-    const eyeRy = eyeRyBase * blink;
-
-    // white eyes
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.ellipse(-eyeGap, eyeY, eyeRx, eyeRy, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(eyeGap, eyeY, eyeRx, eyeRy, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // pupils (polygon-ish: circle with flat heart? keep circle)
-    if (!sleep) {
-      const pr = R * 0.075;
-      ctx.fillStyle = '#2F4636';
-      ctx.beginPath();
-      ctx.arc(-eyeGap + gazeX, eyeY + gazeY, pr, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(eyeGap + gazeX, eyeY + gazeY, pr, 0, Math.PI * 2);
-      ctx.fill();
-      // highlights
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.beginPath();
-      ctx.arc(-eyeGap + gazeX - pr * 0.3, eyeY + gazeY - pr * 0.3, pr * 0.28, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(eyeGap + gazeX - pr * 0.3, eyeY + gazeY - pr * 0.3, pr * 0.28, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      // closed eyes: gentle arcs
-      ctx.strokeStyle = '#2F4636';
-      ctx.lineWidth = Math.max(2, R * 0.045);
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(-eyeGap, eyeY + R * 0.02, R * 0.13, Math.PI * 0.15, Math.PI * 0.85);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(eyeGap, eyeY + R * 0.02, R * 0.13, Math.PI * 0.15, Math.PI * 0.85);
-      ctx.stroke();
-    }
-
-    // mouth
-    ctx.strokeStyle = '#3C5544';
-    ctx.lineWidth = Math.max(2, R * 0.04);
-    ctx.lineCap = 'round';
-    if (happy) {
-      ctx.beginPath();
-      ctx.arc(0, eyeY + R * 0.16, R * 0.22, Math.PI * 0.12, Math.PI * 0.88);
-      ctx.stroke();
-    } else if (sleep) {
-      // small o
-      ctx.beginPath();
-      ctx.arc(0, eyeY + R * 0.2, R * 0.05, 0, Math.PI * 2);
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(-R * 0.08, eyeY + R * 0.24);
-      ctx.quadraticCurveTo(0, eyeY + R * 0.3, R * 0.08, eyeY + R * 0.24);
-      ctx.stroke();
-    }
-
-    // blush
-    if (happy || listen) {
-      ctx.fillStyle = 'rgba(255, 158, 173, 0.55)';
-      ctx.beginPath();
-      ctx.ellipse(-eyeGap - R * 0.1, eyeY + R * 0.2, R * 0.08, R * 0.05, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(eyeGap + R * 0.1, eyeY + R * 0.2, R * 0.08, R * 0.05, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
-
-    // thinking / sleep decoration (drawn outside transforms)
-    if (think) {
-      ctx.fillStyle = '#B3F0C2';
-      ctx.beginPath();
-      ctx.ellipse(cx + R * 1.05, cy - R * 1.05, R * 0.16, R * 0.16, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(179, 240, 194, 0.65)';
-      ctx.beginPath();
-      ctx.arc(cx + R * 1.42, cy - R * 1.28, R * 0.1, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx + R * 1.68, cy - R * 1.42, R * 0.06, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (sleep) {
-      ctx.strokeStyle = '#9BD3AB';
-      ctx.lineWidth = Math.max(2, R * 0.045);
-      ctx.lineCap = 'round';
-      const zx = cx + R * 0.95;
-      const zy = cy - R * 0.9;
-      const s = R * 0.2;
-      ctx.beginPath();
-      ctx.moveTo(zx + s * 0.3, zy);
-      ctx.lineTo(zx, zy + s * 0.26);
-      ctx.lineTo(zx + s * 0.34, zy + s * 0.26);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(zx + s * 0.3 + s * 0.32, zy + s * 0.3);
-      ctx.lineTo(zx + s * 0.32, zy + s * 0.56);
-      ctx.lineTo(zx + s * 0.66, zy + s * 0.56);
-      ctx.stroke();
-    }
+    this.engine.bounceOnce();
   }
 
   build() {
     Canvas(this.ctx)
-      .width(this.size)
-      .height(this.size)
+      .width(this.avatarSize)
+      .height(this.avatarSize)
       .onReady(() => {
-        this.w = this.ctx.width;
-        this.h = this.ctx.height;
-        this.drawFrame();
+        this.cvReady = true;
+        this.lastNs = 0;
+        if (this.engine) {
+          this.engine.paint(this.ctx, this.avatarSize);
+        }
       })
+      .onTouch((ev: TouchEvent) => {
+        this.onTouched(ev);
+      })
+      .onClick(() => {
+        this.onTap();
+      })
+      .gesture(
+        LongPressGesture({ duration: 500 })
+          .onAction(() => {
+            this.onLongPress();
+          })
+      )
   }
 }
