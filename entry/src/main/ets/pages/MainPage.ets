@@ -154,7 +154,9 @@ struct MainPage {
       return {
         value: [
           { content: { label: '搜索记忆', icon: $r('sys.symbol.magnifyingglass'), isEnabled: true, action: () => { GardenController.openSearch(); } } },
-          { content: { label: '更多', icon: $r('sys.symbol.ellipsis_message_1'), isEnabled: true, action: () => { GardenController.openMenu(); } } }
+          { content: { label: '花园模式', icon: $r('sys.symbol.house'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.GARDEN); } } },
+          { content: { label: '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } },
+          { content: { label: '记忆树', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.TREE); } } }
         ]
       };
     }

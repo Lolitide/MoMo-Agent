@@ -113,6 +113,9 @@ export struct A_Garden {
       this.detailOpen = false;
       this.menuOpen = true;
     };
+    GardenController.switchTo = (m: number) => {
+      this.switchMode(m as GardenMode);
+    };
     setTimeout(() => {
       this.memories = this.repo.getAll();
       this.pageState = PageState.SUCCESS;
@@ -213,9 +216,6 @@ export struct A_Garden {
   // 视图切换入口（花园/大纲/树）：同步 mode 与记忆加载状态（树模式需要构建树数据）
   private switchMode(m: GardenMode): void {
     this.menuOpen = false;
-    if (m === this.mode) {
-      return;
-    }
     this.mode = m;
     this.selectedMemory = null;
     this.detailH = 196;

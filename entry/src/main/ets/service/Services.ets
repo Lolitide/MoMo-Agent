@@ -89,6 +89,7 @@ export class GardenController {
   };
   static modeOverride: number = -1;
   static pendingFocusId: string = '';
+  static switchTo: (m: number) => void = (m: number) => {};
 }
 
 // 首页动作入口（由 HdsNavigation 系统按钮触发）

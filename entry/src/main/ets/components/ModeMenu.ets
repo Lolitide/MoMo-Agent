@@ -45,11 +45,12 @@ export struct ModeMenu {
       }
     }
     .width('100%')
-    .height(46)
+    .height(48)
     .padding({ left: 16, right: 16 })
     .onClick(() => {
       this.onSelect(m);
     })
+    .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.97 })
   }
 
   build() {
@@ -59,6 +60,7 @@ export struct ModeMenu {
           .width('100%')
           .height('100%')
           .backgroundColor('rgba(0,0,0,0)')
+          .hitTestBehavior(HitTestMode.Transparent)
           .onClick(() => {
             this.onSelect(this.mode);
           })
@@ -78,6 +80,7 @@ export struct ModeMenu {
         .shadow({ radius: 26, color: 'rgba(26,48,32,0.18)', offsetY: 6 })
         .padding({ top: 6, bottom: 6 })
         .margin({ top: this.statusH + 62, right: 14 })
+        .zIndex(10)
         .transition(TransitionEffect.opacity(0).combine(TransitionEffect.scale({ x: 0.92, y: 0.92 }))
           .animation({ duration: 180, curve: Curve.EaseOut }))
       }
