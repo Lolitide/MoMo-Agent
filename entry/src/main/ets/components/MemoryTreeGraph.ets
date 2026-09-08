@@ -23,8 +23,8 @@ import { TreePos, TreeLayoutUtil } from '../utils/TreeLayout';
 @Component
 export struct MemoryTreeGraph {
   @Prop root: MemoryTreeNode = new MemoryTreeNode();
-  @Prop selectedId: string = '';
-  @Prop zoom: number = 1;
+  @Prop @Watch('onSelectedChange') selectedId: string = '';
+  @Prop @Watch('onSelectedChange') zoom: number = 1;
   onSelect: (nodeId: string) => void = (nodeId: string) => {};
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
   private laid: TreePos[] = [];
@@ -211,6 +211,11 @@ export struct MemoryTreeGraph {
           this.onSelect(id);
         }
       })
+  }
+
+  // 选中节点 / 缩放发生变化时立即重绘（修复“高亮滞后/不切换、缩放不更新”）
+  private onSelectedChange(): void {
+    this.draw();
   }
 
   private reDrawWithZoom(scale: number): void {

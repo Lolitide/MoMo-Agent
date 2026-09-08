@@ -56,6 +56,8 @@ struct MainPage {
   @State tab: number = 0;
   @State addOpen: boolean = false;
   @State userName: string = '酪酪肽';
+  // 响应式花园模式（AppStorage 驱动，菜单随模式实时刷新）
+  @StorageLink('gardenMode') gardenMode: number = 0;
   private tabsCtrl: HdsTabsController = new HdsTabsController();
   private hi: string = '你好';
 
@@ -151,6 +153,18 @@ struct MainPage {
         ]
       };
     } else if (this.tab === 1) {
+      // 记忆树模式：系统菜单改为 [搜索, −, ＋, 花园, 大纲]（± 右对齐系统按钮，缩放树）
+      if (this.gardenMode === GardenMode.TREE) {
+        return {
+          // 记忆树模式：HDS 系统 ± 按钮（右对齐），并保留花园/大纲出口（搜索在其他模式可达）
+          value: [
+            { content: { label: '缩小', icon: $r('sys.symbol.minus'), isEnabled: true, action: () => { GardenController.zoomOut(); } } },
+            { content: { label: '放大', icon: $r('sys.symbol.plus'), isEnabled: true, action: () => { GardenController.zoomIn(); } } },
+            { content: { label: '花园模式', icon: $r('sys.symbol.house'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.GARDEN); } } },
+            { content: { label: '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } }
+          ]
+        };
+      }
       return {
         value: [
           { content: { label: '搜索记忆', icon: $r('sys.symbol.magnifyingglass'), isEnabled: true, action: () => { GardenController.openSearch(); } } },

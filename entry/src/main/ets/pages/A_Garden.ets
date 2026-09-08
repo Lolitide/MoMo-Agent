@@ -116,6 +116,14 @@ export struct A_Garden {
     GardenController.switchTo = (m: number) => {
       this.switchMode(m as GardenMode);
     };
+    GardenController.gardenMode = this.mode;
+    AppStorage.setOrCreate('gardenMode', this.mode);
+    GardenController.zoomIn = () => {
+      this.treeZoom = Math.min(2.4, this.treeZoom + 0.15);
+    };
+    GardenController.zoomOut = () => {
+      this.treeZoom = Math.max(0.5, this.treeZoom - 0.15);
+    };
     setTimeout(() => {
       this.memories = this.repo.getAll();
       this.pageState = PageState.SUCCESS;
@@ -217,6 +225,8 @@ export struct A_Garden {
   private switchMode(m: GardenMode): void {
     this.menuOpen = false;
     this.mode = m;
+    GardenController.gardenMode = m;
+    AppStorage.setOrCreate('gardenMode', m);
     this.selectedMemory = null;
     this.detailH = 196;
     this.detailOpen = false;
@@ -485,33 +495,6 @@ export struct A_Garden {
   @Builder
   treeView() {
     Stack({ alignContent: Alignment.Top }) {
-      // 缩放浮钮（树模式，位于标题栏下方左侧）
-      Row() {
-        Column() {
-          SymbolGlyph($r('sys.symbol.minus')).fontSize(15).fontColor([Theme.PRIMARY])
-        }
-        .width(34)
-        .height(34)
-        .onClick(() => {
-          this.treeZoom = Math.max(0.5, this.treeZoom - 0.15);
-        })
-        Row().width(1).height(22).backgroundColor(Theme.LINE)
-        Column() {
-          SymbolGlyph($r('sys.symbol.plus')).fontSize(15).fontColor([Theme.PRIMARY])
-        }
-        .width(34)
-        .height(34)
-        .onClick(() => {
-          this.treeZoom = Math.min(2.4, this.treeZoom + 0.15);
-        })
-      }
-      .height(38)
-      .borderRadius(19)
-      .backgroundColor('rgba(255,255,255,0.9)')
-      .border({ width: 1, color: 'rgba(255,255,255,0.9)' })
-      .shadow({ radius: 8, color: 'rgba(40,60,46,0.10)', offsetY: 2 })
-      .position({ x: 14, y: DeviceUtil.statusBarH + 64 })
-
       MemoryTreeGraph({
         root: this.buildTree(),
         selectedId: this.selectedMemory !== null ? this.selectedMemory.id : '',
