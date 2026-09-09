@@ -48,6 +48,7 @@ import { B_TodayMemory } from './B_TodayMemory';
 import { B_DailyComic } from './B_DailyComic';
 import { B_About } from './B_About';
 import { B_Search } from './B_Search';
+import { B_ComicViewer } from './B_ComicViewer';
 
 @Entry
 @Component
@@ -201,6 +202,8 @@ struct MainPage {
       B_About()
     } else if (name === 'B_Search') {
       B_Search()
+    } else if (name === 'C_ComicViewer') {
+      B_ComicViewer()
     }
   }
 

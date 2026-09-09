@@ -22,6 +22,7 @@ export class RouteName {
   static readonly DAILY_COMIC: string = 'B_DailyComic';
   static readonly ABOUT: string = 'B_About';
   static readonly SEARCH: string = 'B_Search';
+  static readonly COMIC_VIEWER: string = 'C_ComicViewer';
 }
 
 class EmptyParam {
@@ -36,6 +37,7 @@ export class AppRouter {
   static stack: NavPathStack = new NavPathStack();
   static lastParam: object = RouteParam.NONE;
   static autoNav: string = '';
+  static viewerIndex: number = 0;
 
   static push(name: string, param?: object): void {
     AppRouter.lastParam = param ?? RouteParam.NONE;

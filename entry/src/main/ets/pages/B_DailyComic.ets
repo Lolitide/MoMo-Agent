@@ -42,7 +42,6 @@ export struct B_DailyComic {
   // 单一浮层状态：sheetMode 0=纠正 1=反馈
   @State sheetOpen: boolean = false;
   @State sheetMode: number = -1;
-  @State viewerOpen: boolean = false;
   @State viewerScale: number = 1;
   @State viewerTx: number = 0;
   @State viewerTy: number = 0;
@@ -73,14 +72,6 @@ export struct B_DailyComic {
     setTimeout(() => {
       this.load();
     }, 500);
-  }
-
-  private resetViewer(): void {
-    animateTo({ duration: 180, curve: Curve.EaseOut }, () => {
-      this.viewerScale = 1;
-      this.viewerTx = 0;
-      this.viewerTy = 0;
-    });
   }
 
 
@@ -139,12 +130,14 @@ export struct B_DailyComic {
             .height('100%')
             .borderRadius(26)
             .objectFit(ImageFit.Cover)
+            // 共享元素转场起点：点击后直接“飞”进全屏查看页
+            .sharedTransition('comicViewer', { duration: 340, curve: Curve.EaseOut })
         }
         .width('100%')
         .height('100%')
         .onClick(() => {
-          this.viewerOpen = true;
-          this.resetViewer();
+          AppRouter.viewerIndex = p.index;
+          AppRouter.push(RouteName.COMIC_VIEWER);
         })
       }, (p: ComicPage) => p.index.toString())
     }
@@ -202,6 +195,7 @@ export struct B_DailyComic {
     .height('100%')
     .justifyContent(FlexAlign.Center)
   }
+
 
   build() {
     HdsNavDestination() {
@@ -276,87 +270,6 @@ export struct B_DailyComic {
           .hitTestBehavior(HitTestMode.Transparent)
         }
 
-        // 全屏查看
-        if (this.viewerOpen) {
-          Stack({ alignContent: Alignment.Center }) {
-            Image(this.comic.pages[this.current].image)
-              .width('100%')
-              .height('100%')
-              .objectFit(ImageFit.Contain)
-              .scale({
-                x: this.viewerScale,
-                y: this.viewerScale,
-                centerX: 0.5,
-                centerY: 0.5
-              })
-              .translate({ x: this.viewerTx, y: this.viewerTy })
-              .gesture(
-                GestureGroup(GestureMode.Exclusive,
-                  PinchGesture({ fingers: 2, distance: 2 })
-                    .onActionStart(() => {
-                      this.pinchStart = this.viewerScale;
-                    })
-                    .onActionUpdate((event: GestureEvent) => {
-                      this.viewerScale = Math.min(Math.max(this.pinchStart * event.scale, 0.6), 4);
-                    }),
-                  PanGesture({ fingers: 1, direction: PanDirection.All, distance: 3 })
-                    .onActionStart(() => {
-                      this.panStartX = this.viewerTx;
-                      this.panStartY = this.viewerTy;
-                    })
-                    .onActionUpdate((event: GestureEvent) => {
-                      this.viewerTx = this.panStartX + event.offsetX;
-                      this.viewerTy = this.panStartY + event.offsetY;
-                    }),
-                  TapGesture({ count: 2 })
-                    .onAction(() => {
-                      if (this.viewerScale > 1.05) {
-                        this.resetViewer();
-                      } else {
-                        animateTo({ duration: 200, curve: Curve.EaseOut }, () => {
-                          this.viewerScale = 2;
-                        });
-                      }
-                    })
-                )
-              )
-              .onClick(() => {
-                this.viewerOpen = false;
-                this.resetViewer();
-              })
-          }
-          .width('100%')
-          .height('100%')
-          .backgroundColor('rgba(12,16,13,0.96)')
-
-          Row() {
-            Column() {
-              Stack() {
-                Column().width(36).height(36).borderRadius(999).backgroundColor('rgba(255,255,255,0.25)')
-                SymbolGlyph($r('sys.symbol.xmark')).fontSize(18).fontColor(['#FFFFFF'])
-              }
-            }
-            .width(36)
-            .height(36)
-            .onClick(() => {
-              this.viewerOpen = false;
-              this.resetViewer();
-            })
-          }
-          .width('100%')
-          .padding({ left: 18, right: 18, top: 14 })
-          .justifyContent(FlexAlign.End)
-          .align(Alignment.Top)
-
-          Text((this.current + 1).toString() + ' / ' + this.comic.pages.length.toString())
-            .fontSize(12)
-            .fontColor('rgba(255,255,255,0.85)')
-            .backgroundColor('rgba(0,0,0,0.35)')
-            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-            .borderRadius(12)
-            .align(Alignment.Bottom)
-            .margin({ bottom: 24 })
-        }
       }
       .width('100%')
       .height('100%')
