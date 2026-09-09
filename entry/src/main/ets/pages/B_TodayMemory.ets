@@ -72,7 +72,8 @@ export struct B_TodayMemory {
   }
 
   private onPanUpdate(offsetY: number): void {
-    const next = this.panBase - offsetY;
+    // 向下拖拽 = 区域变大（把手跟随手指下移）
+    const next = this.panBase + offsetY;
     this.eventsH = Math.min(Math.max(next, 0), 400);
   }
 
@@ -186,25 +187,34 @@ export struct B_TodayMemory {
       .height(this.eventsH)
       .clip(true)
 
-      Row()
-        .width(56)
-        .height(5)
-        .borderRadius(3)
-        .backgroundColor('#C4D3C8')
-        .shadow({ radius: 4, color: 'rgba(60,90,66,0.10)', offsetY: 1 })
-        .gesture(
-          PanGesture({ direction: PanDirection.Vertical, distance: 4 })
-            .onActionStart(() => {
-              this.onPanStart();
-            })
-            .onActionUpdate((event: GestureEvent) => {
-              this.onPanUpdate(event.offsetY);
-            })
-            .onActionEnd(() => {
-              this.onPanEnd();
-            })
-        )
-        .margin({ top: 4, bottom: 4 })
+      Column({ space: 5 }) {
+        Row()
+          .width(56)
+          .height(5)
+          .borderRadius(3)
+          .backgroundColor('#C4D3C8')
+          .shadow({ radius: 4, color: 'rgba(60,90,66,0.10)', offsetY: 1 })
+          .gesture(
+            PanGesture({ direction: PanDirection.Vertical, distance: 4 })
+              .onActionStart(() => {
+                this.onPanStart();
+              })
+              .onActionUpdate((event: GestureEvent) => {
+                this.onPanUpdate(event.offsetY);
+              })
+              .onActionEnd(() => {
+                this.onPanEnd();
+              })
+          )
+        // 操作引导：说明此处为“事件区域大小调整”把手
+        Text('上下拖动调整事件区域大小')
+          .fontSize(10)
+          .fontColor(Theme.TERTIARY)
+          .opacity(0.85)
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Center)
+      .margin({ top: 4, bottom: 4 })
     }
     .width('100%')
   }

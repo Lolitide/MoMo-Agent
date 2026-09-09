@@ -47,18 +47,27 @@ export struct EventTimeline {
     Column() {
       ForEach(this.events, (ev: EventItem, index: number) => {
         Row() {
+          // 时间轴列：Stack 叠加（position 不参与布局）
+          // - 引导线：水平居中(x=25)贯穿，上下延伸 -20 与相邻条目无缝衔接
+          // - 节点圆标：与线的 x 轴同心(x=8)，并垂直对齐卡片中部(y=37)
+          // 分段时间线：列高 = 卡片行高（height 100%），行高不被线段撑大 → 卡片零间隙
           Column() {
-            // line upper
+            // 上段：条目顶部 -> 圆标上缘
             Row().width(2).height(16).backgroundColor('#D6E6DA')
-            // dot
+            // 圆标（流式布局，处于线段之间）
             Stack() {
               Column().width(36).height(36).borderRadius(999).backgroundColor('#FFFFFF')
                 .shadow({ radius: 6, color: 'rgba(71,110,80,0.12)', offsetY: 1 })
-              SymbolGlyph(this.iconOf(ev.category)).fontSize(16).fontColor(['#4C9A62'])
+              Column() {
+                SymbolGlyph(this.iconOf(ev.category)).fontSize(16).fontColor(['#4C9A62'])
+              }
+              .width(36)
+              .height(36)
+              .justifyContent(FlexAlign.Center)
+              .alignItems(HorizontalAlign.Center)
             }
-            // line lower
-            Row().width(2).height(16)
-              .backgroundColor(index === this.events.length - 1 ? 'rgba(0,0,0,0)' : '#D6E6DA')
+            // 下段：圆标下缘 -> 条目底部（与下一圆标无缝衔接）
+            Row().width(2).height(36).backgroundColor('#D6E6DA')
           }
           .width(52)
           .alignItems(HorizontalAlign.Center)
@@ -89,14 +98,15 @@ export struct EventTimeline {
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
           .layoutWeight(1)
-          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .padding({ left: 12, right: 12, top: 8, bottom: 8 })
           .backgroundColor('#FFFFFF')
           .borderRadius(16)
           .border({ width: 1, color: Theme.LINE })
         }
         .width('100%')
+        .height(88)
         .alignItems(VerticalAlign.Top)
-        .margin({ bottom: 4 })
+        .margin({ bottom: 0 })
       }, (ev: EventItem) => ev.id)
     }
     .width('100%')
