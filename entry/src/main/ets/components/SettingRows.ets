@@ -2,11 +2,12 @@
  * ============================================================================
  * 文件名：components/SettingRows.ets
  * ============================================================================
- * 【用途】设置页通用行组件（两枚）：SettingSwitchRow（图标+标题+描述+开关，onChange）、
- *   SettingNavRow（图标+标题+描述+右侧箭头/自定义，onTap）；外观与隐私设置共用。
+ * 【用途】设置页通用行组件（两枚）：SettingSwitchRow（图标+标题+可选说明+开关）、
+ *   SettingNavRow（图标+标题+可选说明+右侧箭头/自定义）；外观与隐私设置共用。
+ *   极简风格：图标无背景底、标题 16、仅必要项保留第二行小字说明。
  * 【前置条件 / 假设】
- *   - 依赖：Theme；开关组件用系统 Toggle/自定义 Toggle 视觉；
- *   - 假设：行高 62-64；图标为 sys.symbol。
+ *   - 依赖：Theme；开关组件用系统 Toggle；
+ *   - 假设：行高 64；图标为 sys.symbol。
  * 【输入 / 输出（后置条件）】
  *   - 输入：开关变化、行点击；
  *   - 输出：onChange(on)/onTap() 回调。
@@ -30,21 +31,21 @@ export struct SettingSwitchRow {
 
   build() {
     Row({ space: 12 }) {
-      Stack() {
-        Column().width(38).height(38).borderRadius(999).backgroundColor(this.iconStyle === 'danger' ? '#FDECEC' : '#EDF6EF')
-        SymbolGlyph(this.icon).fontSize(18)
-          .fontColor([this.iconStyle === 'danger' ? Theme.DANGER : Theme.BRAND_DEEP])
-      }
+      // 极简图标：无背景底
+      SymbolGlyph(this.icon).fontSize(22)
+        .fontColor([this.iconStyle === 'danger' ? Theme.DANGER : Theme.BRAND_DEEP])
       Column({ space: 2 }) {
         Text(this.title)
-          .fontSize(14)
+          .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor(Theme.PRIMARY)
-        Text(this.desc)
-          .fontSize(11)
-          .fontColor(Theme.TERTIARY)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.desc !== '') {
+          Text(this.desc)
+            .fontSize(11)
+            .fontColor(Theme.TERTIARY)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -55,8 +56,8 @@ export struct SettingSwitchRow {
         })
     }
     .width('100%')
-    .height(62)
-    .padding({ left: 14, right: 14 })
+    .height(64)
+    .padding({ left: 18, right: 18 })
     .onClick(() => {
       this.onTap();
     })
@@ -74,21 +75,21 @@ export struct SettingNavRow {
 
   build() {
     Row({ space: 12 }) {
-      Stack() {
-        Column().width(38).height(38).borderRadius(999).backgroundColor(this.iconStyle === 'danger' ? '#FDECEC' : '#EDF6EF')
-        SymbolGlyph(this.icon).fontSize(18)
-          .fontColor([this.iconStyle === 'danger' ? Theme.DANGER : Theme.BRAND_DEEP])
-      }
+      // 极简图标：无背景底
+      SymbolGlyph(this.icon).fontSize(22)
+        .fontColor([this.iconStyle === 'danger' ? Theme.DANGER : Theme.BRAND_DEEP])
       Column({ space: 2 }) {
         Text(this.title)
-          .fontSize(14)
+          .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor(Theme.PRIMARY)
-        Text(this.desc)
-          .fontSize(11)
-          .fontColor(Theme.TERTIARY)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.desc !== '') {
+          Text(this.desc)
+            .fontSize(11)
+            .fontColor(Theme.TERTIARY)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -107,8 +108,8 @@ export struct SettingNavRow {
       }
     }
     .width('100%')
-    .height(62)
-    .padding({ left: 14, right: 14 })
+    .height(64)
+    .padding({ left: 18, right: 18 })
     .onClick(() => {
       this.onTap();
     })

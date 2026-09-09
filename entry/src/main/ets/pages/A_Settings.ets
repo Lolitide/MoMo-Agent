@@ -76,7 +76,7 @@ export struct A_Settings {
     Stack({ alignContent: Alignment.Top }) {
       Scroll(this.scroller) {
         Column({ space: 18 }) {
-          Blank().height(118)
+          Blank().height(170)
 
           // ============ 外观与个性化 ============
           Column({ space: 10 }) {
@@ -87,14 +87,11 @@ export struct A_Settings {
               .width('100%')
               .padding({ left: 4 })
             Column({ space: 0 }) {
-              Row({ space: 10 }) {
-                Stack() {
-                  Column().width(38).height(38).borderRadius(999).backgroundColor('#EDF6EF')
-                  SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(18).fontColor([Theme.BRAND_DEEP])
-                }
+              Row({ space: 12 }) {
+                  SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(22).fontColor([Theme.BRAND_DEEP])
                 Column({ space: 2 }) {
                   Text('主题色')
-                    .fontSize(14)
+                    .fontSize(16)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(Theme.PRIMARY)
                   Text('选择默默的主色调')
@@ -127,13 +124,13 @@ export struct A_Settings {
                 }
               }
               .width('100%')
-              .height(62)
-              .padding({ left: 14, right: 14 })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              .height(64)
+              .padding({ left: 18, right: 18 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingSwitchRow({
                 icon: $r('sys.symbol.moon_z'),
                 title: '深色模式',
-                desc: '让默默在晚上也舒服一点',
+
                 isOn: this.darkOn,
                 onChange: (on: boolean) => {
                   this.darkOn = on;
@@ -141,15 +138,12 @@ export struct A_Settings {
                   PromptUtil.toast('深色模式状态已更新（Mock）');
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               Row({ space: 12 }) {
-                Stack() {
-                  Column().width(38).height(38).borderRadius(999).backgroundColor('#EDF6EF')
-                  SymbolGlyph($r('sys.symbol.text_and_t')).fontSize(18).fontColor([Theme.BRAND_DEEP])
-                }
+                  SymbolGlyph($r('sys.symbol.text_and_t')).fontSize(22).fontColor([Theme.BRAND_DEEP])
                 Column({ space: 2 }) {
                   Text('字体大小')
-                    .fontSize(14)
+                    .fontSize(16)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(Theme.PRIMARY)
                   Text('标准 / 大一号')
@@ -184,13 +178,13 @@ export struct A_Settings {
                 }
               }
               .width('100%')
-              .height(62)
-              .padding({ left: 14, right: 14 })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              .height(64)
+              .padding({ left: 18, right: 18 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingSwitchRow({
                 icon: $r('sys.symbol.leaf'),
                 title: '低打扰模式',
-                desc: '减少默默主动弹出的频率',
+
                 isOn: this.lowInterrupt,
                 onChange: (on: boolean) => {
                   this.lowInterrupt = on;
@@ -218,7 +212,7 @@ export struct A_Settings {
               SettingSwitchRow({
                 icon: $r('sys.symbol.calendar'),
                 title: '读取日历',
-                desc: '默默可观察你的日程安排',
+
                 isOn: this.readCal,
                 onChange: (on: boolean) => {
                   this.readCal = on;
@@ -229,11 +223,11 @@ export struct A_Settings {
                   PromptUtil.toast('日历数据本轮为 Mock，不会真正读取');
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingSwitchRow({
                 icon: $r('sys.symbol.list_bullet'),
                 title: '读取待办',
-                desc: '把待办记进花园',
+
                 isOn: this.readTodo,
                 onChange: (on: boolean) => {
                   this.readTodo = on;
@@ -241,11 +235,11 @@ export struct A_Settings {
                   PromptUtil.toast('待办权限已' + (on ? '开启' : '关闭') + '（Mock）');
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingSwitchRow({
                 icon: $r('sys.symbol.doc_text'),
                 title: '读取备忘录',
-                desc: '随时记录一闪而过的念头',
+
                 isOn: this.readMemo,
                 onChange: (on: boolean) => {
                   this.readMemo = on;
@@ -253,11 +247,11 @@ export struct A_Settings {
                   PromptUtil.toast('备忘录权限已' + (on ? '开启' : '关闭') + '（Mock）');
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingSwitchRow({
                 icon: $r('sys.symbol.camera'),
                 title: '相机使用',
-                desc: '让默默拍下你的今日天空',
+
                 isOn: this.camera,
                 onChange: (on: boolean) => {
                   this.camera = on;
@@ -288,12 +282,12 @@ export struct A_Settings {
               SettingNavRow({
                 icon: $r('sys.symbol.flower'),
                 title: '管理记忆与花园',
-                desc: '查看、编辑、删除全部记忆',
+
                 onTap: () => {
                   TabController.switch(1);
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingNavRow({
                 icon: $r('sys.symbol.picture'),
                 title: '存储占用',
@@ -303,21 +297,21 @@ export struct A_Settings {
                   PromptUtil.toast('已释放 1.2 MB（Mock）');
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingNavRow({
                 icon: $r('sys.symbol.ohos_trash'),
                 iconStyle: 'danger',
                 title: '清除记忆数据',
-                desc: '清空全部 Mock 记忆',
+
                 onTap: () => {
                   this.clearAll();
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingNavRow({
                 icon: $r('sys.symbol.arrow_clockwise'),
                 title: '恢复示例数据',
-                desc: '重新载入默默准备的样例记忆',
+
                 onTap: () => {
                   MemoryRepository.get().restoreSamples();
                   PromptUtil.toast('已恢复示例数据');
@@ -348,15 +342,12 @@ export struct A_Settings {
                   AppRouter.push(RouteName.ABOUT);
                 }
               })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 64, right: 14 })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               Row({ space: 12 }) {
-                Stack() {
-                  Column().width(38).height(38).borderRadius(999).backgroundColor('#EDF6EF')
-                  SymbolGlyph($r('sys.symbol.star')).fontSize(18).fontColor([Theme.BRAND_DEEP])
-                }
+                  SymbolGlyph($r('sys.symbol.star')).fontSize(22).fontColor([Theme.BRAND_DEEP])
                 Column({ space: 2 }) {
                   Text('当前版本')
-                    .fontSize(14)
+                    .fontSize(16)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(Theme.PRIMARY)
                   Text('MoMo 1.0.0 · 第一轮 Mock UI')
@@ -367,8 +358,8 @@ export struct A_Settings {
                 .alignItems(HorizontalAlign.Start)
               }
               .width('100%')
-              .height(62)
-              .padding({ left: 14, right: 14 })
+              .height(64)
+              .padding({ left: 18, right: 18 })
             }
             .width('100%')
             .borderRadius(Theme.RADIUS_CARD)
@@ -377,7 +368,7 @@ export struct A_Settings {
             .clip(true)
           }
 
-          Blank().height(260)
+          Blank().height(140)
         }
         .width('100%')
         .padding({ left: 20, right: 20 })
