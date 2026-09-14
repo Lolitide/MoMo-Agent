@@ -299,7 +299,12 @@ struct MainPage {
         })
       }
       .mode(NavigationMode.Stack)
-      .titleMode(HdsNavigationTitleMode.FREE)
+      // 首页/记忆花园/设置 三个一级页共用同一个 HDS 标题栏，标题位置固定：
+      // 华为《标题栏》视觉规范：默认单行高度 56vp、强调型 112vp；FREE 为动态布局
+      // （随手势滑动缩小高度），MINI / FULL 均为固定样式。
+      // 这里用 MINI（单行标题栏）：标题与右侧菜单图标同一水平线、垂直居中对齐，
+      // 不随页面滚动位移，也不使用任何绝对像素定位。
+      .titleMode(HdsNavigationTitleMode.MINI)
       .navDestination(this.pagesMap)
       .titleBar({
         padding: {
@@ -333,7 +338,12 @@ struct MainPage {
           },
           scrollEffectStyle: {
             backgroundStyle: {
-              backgroundColor: 'rgba(247,250,244,0.88)'
+              backgroundColor: 'rgba(247,250,244,0.88)',
+              // 加重标题栏模糊量：HDS 仅在 GRADIENT_BLUR / IMMERSIVE_GRADIENT_BLUR 下生效，范围 0~128
+              blurRadius: 128,
+              // 模糊层的下边缘 = 标题栏高度 + maskExtraHeight（默认 32vp）。
+              // 调到 112vp：内容还没压到标题栏、只是靠近时就已经开始渐模糊。
+              maskExtraHeight: 112
             },
             contentStyle: {
               titleStyle: {
@@ -358,12 +368,16 @@ struct MainPage {
         },
         avoidLayoutSafeArea: true
       })
+      // 一级页：Mini 单行样式默认会带出返回图标，按规范在一级页隐藏（见《标题栏》视觉规范）
+      .hideBackButton(true)
       .systemBarStyle(
         { statusBarContentColor: '#1E2A22' },
         { statusBarContentColor: '#1E2A22' }
       )
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
-      .bindToScrollable([ShellState.homeScroller, ShellState.gardenScroller, ShellState.settingsScroller])
+      // 绑定三个一级页的滚动器：HDS 标题栏据此驱动「沉浸渐变模糊」（标题栏下方渐变实时模糊）
+      .bindToScrollable([ShellState.homeScroller, ShellState.gardenScroller, ShellState.gardenOutlineScroller,
+        ShellState.settingsScroller])
       // 系统底部浮层（bindSheet）：自带拖拽关闭条；加号点击 -> addOpen=true 即从底部上浮
       .bindSheet($$this.addOpen, this.addSheetContent, {
         detents: [SheetSize.MEDIUM, SheetSize.LARGE],

@@ -70,7 +70,6 @@ export struct A_Garden {
   @State undoStack: EditSnapshot[] = [];
   @State redoStack: EditSnapshot[] = [];
   @State treeZoom: number = 1;
-  @State outlineScroll: number = 0;
   @State editTitle: string = '';
   @State editTags: string = '';
   @State editSummary: string = '';
@@ -80,7 +79,7 @@ export struct A_Garden {
   };
   private panBase: number = 196;
   private gardenScroller: Scroller = ShellState.gardenScroller;
-  private outlineScroller: Scroller = new Scroller();
+  private outlineScroller: Scroller = ShellState.gardenOutlineScroller;
 
   // 生命周期：注册仓库监听（记忆变化重载）、HDS 菜单桥（搜索/更多/收起详情）、
   // 400ms 后读取初始记忆并默认选中 m4 打开详情面板
@@ -360,7 +359,9 @@ export struct A_Garden {
     Stack({ alignContent: Alignment.Top }) {
       Scroll(this.outlineScroller) {
         Column({ space: 0 }) {
-          Blank().height(132)
+          // 顶部为 HDS 标题栏预留：单行(Mini)标题栏 56vp + 与首张卡片的间距。
+          // 注意 Scroll 设了 expandSafeArea，内容坐标原点在屏幕顶端，故 114vp 正好让卡片落在标题文字下方。
+          Blank().height(114)
           ForEach(this.sortedMemories(), (m: Memory) => {
             Row() {
               // 时间轴列：连续线（上下各延伸 14vp 与相邻条目衔接）+ 节点对准卡片中部
@@ -448,38 +449,19 @@ export struct A_Garden {
             .padding({ right: 20 })
             .margin({ bottom: 14 })
           }, (m: Memory) => m.id)
-          Blank().height(240)
+          // 底部只留出悬浮 Tab 栏的高度（栏本身 56vp + 下边距 28vp + 渐变光罩 ≈ 120vp）
+          Blank().height(120)
         }
         .width('100%')
         .padding({ left: 20 })
       }
       .scrollBar(BarState.Off)
       .edgeEffect(EdgeEffect.Spring)
-      .onScroll((offset: number) => {
-        this.outlineScroll = offset;
-      })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
-      // 沉浸式标题遮罩：滚动时顶部渐变模糊（参考沉浸标题栏动态模糊做法）
-      Column() {
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
-          .backgroundColor('rgba(247,250,244,0.82)')
-        Column()
-          .width('100%')
-          .height(22)
-          .linearGradient({
-            angle: 180,
-            colors: [['#D2F7FAF4', 0], ['#00F7FAF4', 1]]
-          })
-          .position({ y: 148 })
-      }
-      .width('100%')
-      .height(170)
-      .opacity(this.outlineScroll > 12 ? 1 : 0)
-      .animation({ duration: 200, curve: Curve.EaseOut })
+      // 顶部渐变模糊改由 HDS 标题栏承担：本页的 outlineScroller 已通过 ShellState 交给
+      // HdsNavigation.bindToScrollable，滚动时系统会绘制「沉浸渐变模糊」层（标题栏 + 32vp 过渡），
+      // 这里不再自绘遮罩，避免两层叠加以外的样式偏差。
     }
     .width('100%')
     .height('100%')
@@ -492,6 +474,8 @@ export struct A_Garden {
     return 62 + titleLines * 21 + sumLines * 19 + 24;
   }
 
+  // 记忆树模式不再在标题栏下额外加模糊带：全屏画布直接透出，标题栏只保留 MainPage 的那个
+  // HDS 系统标题栏本身（与首页/设置/大纲一致）。
   @Builder
   treeView() {
     Stack({ alignContent: Alignment.Top }) {

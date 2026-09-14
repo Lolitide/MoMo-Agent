@@ -76,7 +76,8 @@ export struct A_Settings {
     Stack({ alignContent: Alignment.Top }) {
       Scroll(this.scroller) {
         Column({ space: 18 }) {
-          Blank().height(170)
+          // 顶部为 HDS 标题栏预留：单行(Mini)标题栏 56vp + 与内容间距（原为强调型 112vp 时的 170vp，同步减少 56vp）
+          Blank().height(114)
 
           // ============ 外观与个性化 ============
           Column({ space: 10 }) {

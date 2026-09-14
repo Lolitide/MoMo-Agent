@@ -105,6 +105,9 @@ export class HomeController {
 export class ShellState {
   static homeScroller: Scroller = new Scroller();
   static gardenScroller: Scroller = new Scroller();
+  // 记忆花园-大纲模式的列表滚动器：同样交给 HDS 标题栏 bindToScrollable，
+  // 使标题栏自带的「沉浸渐变模糊」在滚动时生效（标题与下方卡片保持对比度）
+  static gardenOutlineScroller: Scroller = new Scroller();
   static settingsScroller: Scroller = new Scroller();
 }
 
