@@ -1,0 +1,42 @@
+{
+  "name": "momo-cloud-functions",
+  "version": "1.0.0",
+  "description": "默默 Mo Mo 云函数集合",
+  "functions": [
+    {
+      "name": "llm-daily-summary",
+      "handler": "llm-daily-summary.handler",
+      "runtime": "nodejs18",
+      "memory": 512,
+      "timeout": 60,
+      "description": "生成每日总结",
+      "environmentVariables": [
+        "DEEPSEEK_API_KEY"
+      ]
+    },
+    {
+      "name": "llm-comic-script",
+      "handler": "llm-comic-script.handler",
+      "runtime": "nodejs18",
+      "memory": 512,
+      "timeout": 60,
+      "description": "生成漫画脚本",
+      "environmentVariables": [
+        "DEEPSEEK_API_KEY"
+      ]
+    },
+    {
+      "name": "image-generate",
+      "handler": "image-generate.handler",
+      "runtime": "nodejs18",
+      "memory": 1024,
+      "timeout": 120,
+      "description": "生成图片（即梦AI）",
+      "environmentVariables": [
+        "JIMENG_ACCESS_KEY",
+        "JIMENG_SECRET_KEY"
+      ]
+    }
+  ],
+  "dependencies": {}
+}

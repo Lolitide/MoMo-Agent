@@ -12,3 +12,6 @@
 /.appanalyzer
 /_shots
 /.codegenie
+
+# AI配置文件（包含API Key，不要提交到Git）
+entry/src/main/resources/rawfile/ai_config.json

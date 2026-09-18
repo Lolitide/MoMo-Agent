@@ -11,6 +11,14 @@
     {
       "name": "EntryAbility_label",
       "value": "默默"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "默默需要访问网络以使用AI能力生成每日总结和漫画"
+    },
+    {
+      "name": "network_info_permission_reason",
+      "value": "默默需要获取网络信息以支持华为账号登录"
     }
   ]
 }

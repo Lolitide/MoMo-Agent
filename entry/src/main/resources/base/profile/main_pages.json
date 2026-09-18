@@ -1,5 +1,8 @@
 {
   "src": [
-    "pages/MainPage"
+    "pages/MainPage",
+    "pages/B_AITest_V2",
+    "pages/LoginPage",
+    "pages/AuthTestPage"
   ]
 }
