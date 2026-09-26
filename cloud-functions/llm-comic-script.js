@@ -9,21 +9,22 @@
 
 const https = require('https');
 
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'your-api-key';
 const DEEPSEEK_API_URL = 'api.deepseek.com';
 
-exports.handler = async (event, context) => {
+exports.handler = async (event, context, callback, logger) => {
+  const respond = (result) => typeof callback === 'function' ? callback(result) : result;
+
   try {
     const { userId, summary, events } = event;
 
     if (!userId || !summary) {
-      return {
+      return respond({
         success: false,
         error: '参数错误：缺少userId或summary'
-      };
+      });
     }
 
-    console.log(`[${userId}] 生成漫画脚本`);
+    logger?.info(`[${userId}] 生成漫画脚本`);
 
     // 构造Prompt
     const prompt = buildComicScriptPrompt(summary, events);
@@ -35,22 +36,23 @@ exports.handler = async (event, context) => {
         content: '你是一位擅长将日常故事转化为温馨漫画的创作者。你需要将用户的每日总结改编成5格漫画分镜脚本。'
       },
       { role: 'user', content: prompt }
-    ]);
+    ], context?.env?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY,
+      context?.env?.DEEPSEEK_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-flash');
 
     // 解析JSON响应
-    const scriptData = JSON.parse(response.content);
+    const scriptData = JSON.parse(response.content.replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
 
-    return {
+    return respond({
       success: true,
       panels: scriptData.panels,
       theme: scriptData.theme
-    };
+    });
   } catch (error) {
-    console.error('生成脚本失败:', error);
-    return {
+    logger?.error(`生成脚本失败: ${error.message}`);
+    return respond({
       success: false,
       error: error.message || '生成脚本失败'
-    };
+    });
   }
 };
 
@@ -96,10 +98,10 @@ ${eventList ? `【今日事件】\n${eventList}\n` : ''}
 请直接输出JSON，不要有其他文字。`;
 }
 
-function callDeepSeek(messages) {
+function callDeepSeek(messages, apiKey, model) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
-      model: 'deepseek-chat',
+      model,
       messages: messages,
       temperature: 0.8,
       max_tokens: 1500
@@ -111,7 +113,7 @@ function callDeepSeek(messages) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Length': Buffer.byteLength(postData)
       }
     };

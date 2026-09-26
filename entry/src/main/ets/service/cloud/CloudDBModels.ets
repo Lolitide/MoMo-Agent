@@ -168,3 +168,96 @@ export class UserFeedback {
     }
   }
 }
+
+/**
+ * 长期记忆表（LongTermMemory）
+ */
+export class LongTermMemory {
+  memoryId: string = '';         // 主键：记忆ID
+  userId: string = '';           // 外键：用户ID
+  title: string = '';            // 标题
+  date: string = '';             // 日期（YYYY-MM-DD）
+  dateTimestamp: number = 0;     // 日期时间戳
+
+  // 记忆内容
+  tags: string = '[]';           // JSON字符串：标签列表
+  summary: string = '';          // 摘要
+  content: string = '';          // 详细内容
+
+  // 分类与重要性
+  type: number = 0;              // 类型：0-生活/1-学习/2-兴趣/3-目标/4-重要回忆
+  importance: number = 2;        // 重要性：1-5
+
+  // 关联数据
+  sourceEvents: string = '[]';   // JSON字符串：来源事件ID列表
+  relatedMemoryIds: string = '[]'; // JSON字符串：关联记忆ID列表
+
+  createdAt: number = 0;         // 创建时间
+  updatedAt: number = 0;         // 更新时间
+
+  constructor(userId?: string, memoryId?: string) {
+    if (userId && memoryId) {
+      this.memoryId = memoryId;
+      this.userId = userId;
+      this.createdAt = Date.now();
+      this.updatedAt = Date.now();
+    }
+  }
+
+  /**
+   * 获取标签列表
+   */
+  getTags(): string[] {
+    try {
+      return JSON.parse(this.tags) as string[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 设置标签列表
+   */
+  setTags(tags: string[]): void {
+    this.tags = JSON.stringify(tags);
+    this.updatedAt = Date.now();
+  }
+
+  /**
+   * 获取来源事件列表
+   */
+  getSourceEvents(): string[] {
+    try {
+      return JSON.parse(this.sourceEvents) as string[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 设置来源事件列表
+   */
+  setSourceEvents(events: string[]): void {
+    this.sourceEvents = JSON.stringify(events);
+    this.updatedAt = Date.now();
+  }
+
+  /**
+   * 获取关联记忆ID列表
+   */
+  getRelatedMemoryIds(): string[] {
+    try {
+      return JSON.parse(this.relatedMemoryIds) as string[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 设置关联记忆ID列表
+   */
+  setRelatedMemoryIds(ids: string[]): void {
+    this.relatedMemoryIds = JSON.stringify(ids);
+    this.updatedAt = Date.now();
+  }
+}

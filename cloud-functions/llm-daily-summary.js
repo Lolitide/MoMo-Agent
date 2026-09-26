@@ -10,25 +10,26 @@
 const https = require('https');
 
 // DeepSeek API配置
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'your-api-key';
 const DEEPSEEK_API_URL = 'api.deepseek.com';
 
 /**
  * 云函数入口
  */
-exports.handler = async (event, context) => {
+exports.handler = async (event, context, callback, logger) => {
+  const respond = (result) => typeof callback === 'function' ? callback(result) : result;
+
   try {
     const { userId, events, mood } = event;
 
     // 验证输入
     if (!userId || !events || !Array.isArray(events)) {
-      return {
+      return respond({
         success: false,
         error: '参数错误：缺少userId或events'
-      };
+      });
     }
 
-    console.log(`[${userId}] 生成每日总结，事件数：${events.length}，心情：${mood}`);
+    logger?.info(`[${userId}] 生成每日总结，事件数：${events.length}，心情：${mood}`);
 
     // 构造Prompt
     const prompt = buildSummaryPrompt(events, mood);
@@ -37,19 +38,20 @@ exports.handler = async (event, context) => {
     const response = await callDeepSeek([
       { role: 'system', content: '你是默默（Mo Mo），一个温暖、善解人意的AI桌宠。你的任务是根据用户的每日事件生成温馨的总结。' },
       { role: 'user', content: prompt }
-    ]);
+    ], context?.env?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY,
+      context?.env?.DEEPSEEK_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-flash');
 
-    return {
+    return respond({
       success: true,
       content: response.content,
       usage: response.usage
-    };
+    });
   } catch (error) {
-    console.error('生成总结失败:', error);
-    return {
+    logger?.error(`生成总结失败: ${error.message}`);
+    return respond({
       success: false,
       error: error.message || '生成总结失败'
-    };
+    });
   }
 };
 
@@ -79,10 +81,10 @@ ${eventList}
 /**
  * 调用DeepSeek API
  */
-function callDeepSeek(messages) {
+function callDeepSeek(messages, apiKey, model) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
-      model: 'deepseek-chat',
+      model,
       messages: messages,
       temperature: 0.7,
       max_tokens: 500
@@ -94,7 +96,7 @@ function callDeepSeek(messages) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Length': Buffer.byteLength(postData)
       }
     };

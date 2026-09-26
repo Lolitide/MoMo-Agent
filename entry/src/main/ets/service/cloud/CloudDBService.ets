@@ -12,7 +12,7 @@
  * ============================================================================
  */
 import { Logger } from '../../utils/Logger';
-import { UserProfile, DailyRecord, ComicImage, UserFeedback } from './CloudDBModels';
+import { UserProfile, DailyRecord, ComicImage, UserFeedback, LongTermMemory } from './CloudDBModels';
 import cloudDatabase from '@hms.core.cloudDatabase';
 import { BusinessError } from '@kit.BasicServicesKit';
 
@@ -63,9 +63,15 @@ export class CloudDBService {
     });
 
     // UserFeedback
-    this.OBJECT_TYPE_INFO_MAP.SET('UserFeedback', {
+    this.OBJECT_TYPE_INFO_MAP.set('UserFeedback', {
       name: 'UserFeedback',
       primaryKey: 'feedbackId'
+    });
+
+    // LongTermMemory
+    this.OBJECT_TYPE_INFO_MAP.set('LongTermMemory', {
+      name: 'LongTermMemory',
+      primaryKey: 'memoryId'
     });
   }
 
@@ -325,6 +331,121 @@ export class CloudDBService {
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `提交反馈失败: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // ==================== 长期记忆管理 ====================
+
+  /**
+   * 保存长期记忆
+   */
+  async upsertMemory(memory: LongTermMemory): Promise<void> {
+    this.ensureInitialized();
+
+    try {
+      memory.updatedAt = Date.now();
+      await this.cloudDBZone!.executeUpsert(memory);
+      Logger.info(CloudDBService.TAG, `记忆保存成功: ${memory.memoryId}`);
+    } catch (err) {
+      const error = err as BusinessError;
+      Logger.error(CloudDBService.TAG, `保存记忆失败: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取指定记忆
+   */
+  async getMemory(userId: string, memoryId: string): Promise<LongTermMemory | null> {
+    this.ensureInitialized();
+
+    try {
+      const query = cloudDatabase.CloudDBZoneQuery.where(LongTermMemory);
+      query.equalTo('memoryId', memoryId).equalTo('userId', userId);
+
+      const snapshot = await this.cloudDBZone!.executeQuery(query);
+      const results = snapshot.getSnapshotObjects();
+
+      return results.length > 0 ? results[0] as LongTermMemory : null;
+    } catch (err) {
+      const error = err as BusinessError;
+      Logger.error(CloudDBService.TAG, `获取记忆失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取用户的所有记忆（分页）
+   */
+  async getUserMemories(userId: string, limit: number = 100, offset: number = 0): Promise<LongTermMemory[]> {
+    this.ensureInitialized();
+
+    try {
+      const query = cloudDatabase.CloudDBZoneQuery.where(LongTermMemory);
+      query.equalTo('userId', userId)
+        .orderByDesc('dateTimestamp')
+        .limit(limit, offset);
+
+      const snapshot = await this.cloudDBZone!.executeQuery(query);
+      return snapshot.getSnapshotObjects() as LongTermMemory[];
+    } catch (err) {
+      const error = err as BusinessError;
+      Logger.error(CloudDBService.TAG, `获取记忆列表失败: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 按类型获取记忆
+   */
+  async getMemoriesByType(userId: string, type: number, limit: number = 50): Promise<LongTermMemory[]> {
+    this.ensureInitialized();
+
+    try {
+      const query = cloudDatabase.CloudDBZoneQuery.where(LongTermMemory);
+      query.equalTo('userId', userId)
+        .equalTo('type', type)
+        .orderByDesc('dateTimestamp')
+        .limit(limit);
+
+      const snapshot = await this.cloudDBZone!.executeQuery(query);
+      return snapshot.getSnapshotObjects() as LongTermMemory[];
+    } catch (err) {
+      const error = err as BusinessError;
+      Logger.error(CloudDBService.TAG, `获取分类记忆失败: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 删除记忆
+   */
+  async deleteMemory(memory: LongTermMemory): Promise<void> {
+    this.ensureInitialized();
+
+    try {
+      await this.cloudDBZone!.executeDelete(memory);
+      Logger.info(CloudDBService.TAG, `记忆删除成功: ${memory.memoryId}`);
+    } catch (err) {
+      const error = err as BusinessError;
+      Logger.error(CloudDBService.TAG, `删除记忆失败: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 批量删除记忆
+   */
+  async deleteMemories(memories: LongTermMemory[]): Promise<void> {
+    this.ensureInitialized();
+
+    try {
+      await this.cloudDBZone!.executeDelete(memories);
+      Logger.info(CloudDBService.TAG, `批量删除记忆成功，共${memories.length}条`);
+    } catch (err) {
+      const error = err as BusinessError;
+      Logger.error(CloudDBService.TAG, `批量删除记忆失败: ${error.message}`);
       throw error;
     }
   }

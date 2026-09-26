@@ -8,34 +8,32 @@
  */
 
 const https = require('https');
-const crypto = require('crypto');
+// 即梦AI配置（火山方舟）
+const ARK_API_HOST = 'ark.cn-beijing.volces.com';
 
-// 即梦AI配置（火山引擎）
-const JIMENG_ACCESS_KEY = process.env.JIMENG_ACCESS_KEY || 'your-access-key';
-const JIMENG_SECRET_KEY = process.env.JIMENG_SECRET_KEY || 'your-secret-key';
-const JIMENG_API_HOST = 'visual.volcengineapi.com';
+exports.handler = async (event, context, callback, logger) => {
+  const respond = (result) => typeof callback === 'function' ? callback(result) : result;
 
-exports.handler = async (event, context) => {
   try {
     const { userId, prompt, style, size } = event;
 
     if (!userId || !prompt) {
-      return {
+      return respond({
         success: false,
         error: '参数错误：缺少userId或prompt'
-      };
+      });
     }
 
-    console.log(`[${userId}] 生成图片: ${prompt.substring(0, 50)}...`);
+    logger?.info(`[${userId}] 生成图片: ${prompt.substring(0, 50)}...`);
 
     // 调用即梦API
-    const result = await callJimengAPI({
-      req_key: 'high_aes_general_v21_L',
+    const result = await callArkImageAPI({
+      model: context?.env?.ARK_IMAGE_MODEL || process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-flash-260915',
       prompt: enhancePrompt(prompt, style),
-      model_version: 'general_v2.1',
-      return_url: true,
-      scale: parseSize(size)
-    });
+      size: parseSize(size),
+      response_format: 'url',
+      watermark: false
+    }, context?.env?.ARK_API_KEY || process.env.ARK_API_KEY);
 
     // 生成任务ID
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -43,18 +41,18 @@ exports.handler = async (event, context) => {
     // 实际应用中，这里应该保存任务状态到数据库
     // 这里简化处理，直接返回图片URL
 
-    return {
+    return respond({
       success: true,
       taskId: taskId,
       status: 'success',
-      imageUrl: result.data?.image_urls?.[0] || ''
-    };
+      imageUrl: result.data?.[0]?.url || ''
+    });
   } catch (error) {
-    console.error('生成图片失败:', error);
-    return {
+    logger?.error(`生成图片失败: ${error.message}`);
+    return respond({
       success: false,
       error: error.message || '生成图片失败'
-    };
+    });
   }
 };
 
@@ -78,40 +76,29 @@ function enhancePrompt(prompt, style) {
  * 解析尺寸
  */
 function parseSize(size) {
-  const sizeMap = {
-    '512x512': '1:1',
-    '1024x1024': '1:1',
-    '768x1024': '3:4',
-    '1024x768': '4:3'
-  };
+  const supportedSizes = new Set([
+    '1024x1024',
+    '768x1024',
+    '1024x768'
+  ]);
 
-  return sizeMap[size] || '1:1';
+  return supportedSizes.has(size) ? size : '1024x1024';
 }
 
 /**
  * 调用即梦API
  */
-function callJimengAPI(params) {
+function callArkImageAPI(params, apiKey) {
   return new Promise((resolve, reject) => {
-    const service = 'cv';
-    const action = 'CVProcess';
-    const version = '2022-08-31';
-    const timestamp = Math.floor(Date.now() / 1000);
-
-    // 构造请求体
     const body = JSON.stringify(params);
 
-    // 生成签名
-    const signature = generateSignature(service, action, version, timestamp, body);
-
     const options = {
-      hostname: JIMENG_API_HOST,
-      path: `/?Action=${action}&Version=${version}`,
+      hostname: ARK_API_HOST,
+      path: '/api/v3/images/generations',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Date': new Date(timestamp * 1000).toUTCString(),
-        'Authorization': signature,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Length': Buffer.byteLength(body)
       }
     };
@@ -127,14 +114,14 @@ function callJimengAPI(params) {
         try {
           const result = JSON.parse(data);
 
-          if (result.ResponseMetadata?.Error) {
-            reject(new Error(result.ResponseMetadata.Error.Message));
+          if (res.statusCode < 200 || res.statusCode >= 300 || result.error) {
+            reject(new Error(result.error?.message || `方舟API请求失败（HTTP ${res.statusCode}）`));
             return;
           }
 
           resolve(result);
         } catch (err) {
-          reject(err);
+          reject(new Error(`方舟API响应解析失败（HTTP ${res.statusCode}）`));
         }
       });
     });
@@ -146,18 +133,4 @@ function callJimengAPI(params) {
     req.write(body);
     req.end();
   });
-}
-
-/**
- * 生成火山引擎API签名（简化版）
- */
-function generateSignature(service, action, version, timestamp, body) {
-  // 实际签名算法较复杂，这里简化处理
-  // 完整实现参考：https://www.volcengine.com/docs/6459/671286
-
-  const hash = crypto.createHmac('sha256', JIMENG_SECRET_KEY)
-    .update(`${action}${version}${timestamp}${body}`)
-    .digest('hex');
-
-  return `HMAC-SHA256 Credential=${JIMENG_ACCESS_KEY}, SignedHeaders=content-type;x-date, Signature=${hash}`;
 }

@@ -42,8 +42,14 @@ export struct A_Home {
   };
 
   aboutToAppear(): void {
-    const daily = EventRepository.get().getToday();
-    this.events = daily.events;
+    // 异步加载今日事件（支持系统数据）
+    EventRepository.get().getToday().then((daily) => {
+      this.events = daily.events;
+    }).catch((err) => {
+      console.error('加载今日事件失败:', err);
+      this.events = [];
+    });
+
     const comic = ComicRepository.get().getToday();
     const imgs: Resource[] = [];
     for (let i = 0; i < comic.pages.length; i++) {
