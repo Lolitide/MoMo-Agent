@@ -12,21 +12,24 @@
  * ============================================================================
  */
 import { Logger } from '../../utils/Logger';
-import cloudStorage from '@hms.core.cloudStorage';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { cloudStorage } from '@kit.CloudFoundationKit';
+import { BusinessError, request } from '@kit.BasicServicesKit';
 import fs from '@ohos.file.fs';
 
 export class CloudStorageService {
   private static readonly TAG = 'CloudStorageService';
   private static instance: CloudStorageService | null = null;
 
-  private storageManagement?: cloudStorage.StorageManagement;
+  private storageBucket: cloudStorage.StorageBucket | null = null;
+  private context: Context | null = null;
   private isInitialized: boolean = false;
+  private verifiedUserId: string | null = null;
 
   // 存储桶配置
   private static readonly DEFAULT_BUCKET = 'momo-images';
   private static readonly IMAGE_FOLDER = 'comics';
-  private static readonly CACHE_DIR = '/data/storage/el2/base/haps/entry/files/image_cache';
+  private static readonly TRANSFER_TIMEOUT_MS = 120000;
+  private cacheDir: string = '';
 
   private constructor() {}
 
@@ -37,10 +40,25 @@ export class CloudStorageService {
     return CloudStorageService.instance;
   }
 
+  /** 仅允许绑定已经由 Cloud Foundation 认证链路确认的用户。 */
+  bindVerifiedUser(userId: string): void {
+    this.validatePathSegment(userId, 'userId');
+    this.verifiedUserId = userId;
+  }
+
+  clearVerifiedUser(): void {
+    this.verifiedUserId = null;
+  }
+
   /**
    * 初始化云存储
    */
-  async initialize(): Promise<void> {
+  async initialize(context?: Context): Promise<void> {
+    if (!context) {
+      throw new Error('云存储初始化失败：缺少 Ability Context');
+    }
+    this.context = context;
+    this.cacheDir = `${context.cacheDir}/image_cache`;
     if (this.isInitialized) {
       Logger.info(CloudStorageService.TAG, '云存储已初始化');
       return;
@@ -49,8 +67,7 @@ export class CloudStorageService {
     try {
       Logger.info(CloudStorageService.TAG, '初始化云存储...');
 
-      // 获取StorageManagement实例
-      this.storageManagement = cloudStorage.getStorageManagement();
+      this.storageBucket = cloudStorage.bucket(CloudStorageService.DEFAULT_BUCKET);
 
       // 创建缓存目录
       await this.ensureCacheDir();
@@ -69,9 +86,9 @@ export class CloudStorageService {
    */
   private async ensureCacheDir(): Promise<void> {
     try {
-      const dirExists = fs.accessSync(CloudStorageService.CACHE_DIR);
+      const dirExists = fs.accessSync(this.cacheDir);
       if (!dirExists) {
-        fs.mkdirSync(CloudStorageService.CACHE_DIR);
+        fs.mkdirSync(this.cacheDir);
         Logger.info(CloudStorageService.TAG, '缓存目录创建成功');
       }
     } catch (err) {
@@ -83,9 +100,103 @@ export class CloudStorageService {
    * 确保已初始化
    */
   private ensureInitialized(): void {
-    if (!this.isInitialized || !this.storageManagement) {
+    if (!this.isInitialized || !this.storageBucket) {
       throw new Error('云存储未初始化，请先调用initialize()');
     }
+    if (!this.context) {
+      throw new Error('云存储缺少 Ability Context');
+    }
+  }
+
+  private ensureVerifiedOwner(userId?: string): string {
+    this.ensureInitialized();
+    if (!this.verifiedUserId) {
+      throw new Error('云存储拒绝访问：尚未绑定可验证的 Cloud Foundation 用户身份');
+    }
+    if (userId && userId !== this.verifiedUserId) {
+      throw new Error('云存储拒绝访问：路径用户与当前云身份不一致');
+    }
+    return this.verifiedUserId;
+  }
+
+  private validatePathSegment(value: string, fieldName: string): void {
+    if (!value || value.length > 200 || !/^[A-Za-z0-9._-]+$/.test(value) ||
+      value === '.' || value === '..') {
+      throw new Error(`${fieldName} 含有不安全字符`);
+    }
+  }
+
+  private validateOwnedRemotePath(remotePath: string): string {
+    const owner = this.ensureVerifiedOwner();
+    if (!remotePath || remotePath.startsWith('/') || remotePath.includes('\\') ||
+      remotePath.includes('//') || remotePath.includes('../') || remotePath.includes('/..')) {
+      throw new Error('云存储路径无效');
+    }
+    const expectedPrefix = `${owner}/`;
+    if (!remotePath.startsWith(expectedPrefix)) {
+      throw new Error('云存储拒绝访问：路径不属于当前用户');
+    }
+    const segments = remotePath.split('/');
+    for (let i = 0; i < segments.length; i++) {
+      this.validatePathSegment(segments[i], '云存储路径');
+    }
+    return `${CloudStorageService.IMAGE_FOLDER}/${remotePath}`;
+  }
+
+  /** Cloud Storage API 的 localPath 以 context.cacheDir 为根目录。 */
+  private toCacheRelativePath(localPath: string): string {
+    if (!this.context) {
+      throw new Error('缺少 Ability Context');
+    }
+    const cachePrefix = `${this.context.cacheDir}/`;
+    let relativePath = localPath;
+    if (localPath.startsWith(cachePrefix)) {
+      relativePath = localPath.substring(cachePrefix.length);
+    }
+    if (!relativePath || relativePath.startsWith('/') || relativePath.includes('\\') ||
+      /[\u0000-\u001f\u007f]/.test(relativePath)) {
+      throw new Error('本地文件必须位于应用 cacheDir 内');
+    }
+    const segments = relativePath.split('/');
+    for (let i = 0; i < segments.length; i++) {
+      if (!segments[i] || segments[i] === '.' || segments[i] === '..') {
+        throw new Error('本地文件路径无效');
+      }
+    }
+    return relativePath;
+  }
+
+  private async runTransfer(task: request.agent.Task, operation: string): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      let finished = false;
+      const timeoutId = setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          reject(new Error(`${operation}任务超时`));
+        }
+      }, CloudStorageService.TRANSFER_TIMEOUT_MS);
+      task.on('completed', (_progress: request.agent.Progress) => {
+        if (!finished) {
+          finished = true;
+          clearTimeout(timeoutId);
+          resolve();
+        }
+      });
+      task.on('failed', (progress: request.agent.Progress) => {
+        if (!finished) {
+          finished = true;
+          clearTimeout(timeoutId);
+          reject(new Error(`${operation}任务失败，状态: ${progress.state}`));
+        }
+      });
+      task.start().catch((err: BusinessError) => {
+        if (!finished) {
+          finished = true;
+          clearTimeout(timeoutId);
+          reject(new Error(`${operation}任务启动失败: ${err.code} - ${err.message}`));
+        }
+      });
+    });
   }
 
   /**
@@ -95,45 +206,25 @@ export class CloudStorageService {
    * @returns 云存储URL
    */
   async uploadImage(localPath: string, remotePath: string): Promise<string> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner();
 
     try {
-      Logger.info(CloudStorageService.TAG, `上传图片: ${localPath} -> ${remotePath}`);
+      Logger.info(CloudStorageService.TAG, '开始上传图片');
 
       // 构造完整的云存储路径
-      const fullPath = `${CloudStorageService.IMAGE_FOLDER}/${remotePath}`;
+      const fullPath = this.validateOwnedRemotePath(remotePath);
 
-      // 获取StorageReference
-      const storageRef = this.storageManagement!.getStorageReference(
-        CloudStorageService.DEFAULT_BUCKET,
-        fullPath
-      );
-
-      // 读取本地文件
-      const file = fs.openSync(localPath, fs.OpenMode.READ_ONLY);
-      const fileSize = fs.statSync(localPath).size;
-      const buffer = new ArrayBuffer(fileSize);
-      fs.readSync(file.fd, buffer);
-      fs.closeSync(file);
-
-      // 上传文件
-      const uploadTask = storageRef.putData(buffer, {
-        contentType: 'image/png'
-      });
-
-      // 监听上传进度
-      uploadTask.on('state_changed', (snapshot: cloudStorage.UploadTaskSnapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        Logger.info(CloudStorageService.TAG, `上传进度: ${progress.toFixed(2)}%`);
-      });
-
-      // 等待上传完成
-      await uploadTask;
+      const parameters: cloudStorage.UploadParams = {
+        localPath: this.toCacheRelativePath(localPath),
+        cloudPath: fullPath
+      };
+      const task = await this.storageBucket!.uploadFile(this.context!, parameters);
+      await this.runTransfer(task, '上传');
 
       // 获取下载URL
-      const downloadUrl = await storageRef.getDownloadURL();
+      const downloadUrl = await this.storageBucket!.getDownloadURL(fullPath);
 
-      Logger.info(CloudStorageService.TAG, `上传成功: ${downloadUrl}`);
+      Logger.info(CloudStorageService.TAG, '图片上传成功');
       return downloadUrl;
     } catch (err) {
       const error = err as BusinessError;
@@ -149,39 +240,31 @@ export class CloudStorageService {
    * @returns 本地文件路径
    */
   async downloadImage(url: string, filename: string): Promise<string> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner();
+    this.validatePathSegment(filename, '缓存文件名');
 
-    const localPath = `${CloudStorageService.CACHE_DIR}/${filename}`;
+    const localPath = `${this.cacheDir}/${filename}`;
 
     try {
       // 检查缓存是否存在
       if (fs.accessSync(localPath)) {
-        Logger.info(CloudStorageService.TAG, `使用缓存图片: ${localPath}`);
+        Logger.info(CloudStorageService.TAG, '使用已缓存图片');
         return localPath;
       }
 
-      Logger.info(CloudStorageService.TAG, `下载图片: ${url}`);
+      Logger.info(CloudStorageService.TAG, '开始下载图片');
 
       // 从URL提取路径
-      const remotePath = this.extractPathFromUrl(url);
-      const storageRef = this.storageManagement!.getStorageReference(
-        CloudStorageService.DEFAULT_BUCKET,
-        remotePath
-      );
+      const remotePath = this.extractOwnedPathFromUrl(url);
+      const parameters: cloudStorage.DownloadParams = {
+        localPath: `image_cache/${filename}`,
+        cloudPath: remotePath,
+        overwrite: true
+      };
+      const task = await this.storageBucket!.downloadFile(this.context!, parameters);
+      await this.runTransfer(task, '下载');
 
-      // 下载文件
-      const downloadTask = storageRef.getFile(localPath);
-
-      // 监听下载进度
-      downloadTask.on('state_changed', (snapshot: cloudStorage.DownloadTaskSnapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        Logger.info(CloudStorageService.TAG, `下载进度: ${progress.toFixed(2)}%`);
-      });
-
-      // 等待下载完成
-      await downloadTask;
-
-      Logger.info(CloudStorageService.TAG, `下载成功: ${localPath}`);
+      Logger.info(CloudStorageService.TAG, '图片下载成功');
       return localPath;
     } catch (err) {
       const error = err as BusinessError;
@@ -198,6 +281,8 @@ export class CloudStorageService {
    * @returns 云存储URL数组
    */
   async uploadComicImages(images: string[], userId: string, recordId: string): Promise<string[]> {
+    this.ensureVerifiedOwner(userId);
+    this.validatePathSegment(recordId, 'recordId');
     const urls: string[] = [];
 
     for (let i = 0; i < images.length; i++) {
@@ -223,6 +308,8 @@ export class CloudStorageService {
    * @returns 本地路径数组
    */
   async downloadComicImages(urls: string[], recordId: string): Promise<string[]> {
+    this.ensureVerifiedOwner();
+    this.validatePathSegment(recordId, 'recordId');
     const paths: string[] = [];
 
     for (let i = 0; i < urls.length; i++) {
@@ -251,21 +338,16 @@ export class CloudStorageService {
    * @param remotePath 云存储路径
    */
   async deleteFile(remotePath: string): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner();
 
     try {
-      const fullPath = `${CloudStorageService.IMAGE_FOLDER}/${remotePath}`;
-      const storageRef = this.storageManagement!.getStorageReference(
-        CloudStorageService.DEFAULT_BUCKET,
-        fullPath
-      );
-
-      await storageRef.delete();
-      Logger.info(CloudStorageService.TAG, `删除成功: ${remotePath}`);
+      const fullPath = this.validateOwnedRemotePath(remotePath);
+      await this.storageBucket!.deleteFile(fullPath);
+      Logger.info(CloudStorageService.TAG, '云存储文件删除成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudStorageService.TAG, `删除失败: ${error.message}`);
-      throw error;
+      const newError = new Error(String(error)); return Promise.reject(newError);
     }
   }
 
@@ -273,11 +355,12 @@ export class CloudStorageService {
    * 清理本地缓存
    */
   async clearCache(): Promise<void> {
+    this.ensureInitialized();
     try {
-      const files = fs.listFileSync(CloudStorageService.CACHE_DIR);
+      const files = fs.listFileSync(this.cacheDir);
 
       for (const file of files) {
-        const filePath = `${CloudStorageService.CACHE_DIR}/${file}`;
+        const filePath = `${this.cacheDir}/${file}`;
         fs.unlinkSync(filePath);
       }
 
@@ -291,12 +374,13 @@ export class CloudStorageService {
    * 获取缓存大小
    */
   async getCacheSize(): Promise<number> {
+    this.ensureInitialized();
     try {
-      const files = fs.listFileSync(CloudStorageService.CACHE_DIR);
+      const files = fs.listFileSync(this.cacheDir);
       let totalSize = 0;
 
       for (const file of files) {
-        const filePath = `${CloudStorageService.CACHE_DIR}/${file}`;
+        const filePath = `${this.cacheDir}/${file}`;
         const stat = fs.statSync(filePath);
         totalSize += stat.size;
       }
@@ -311,16 +395,25 @@ export class CloudStorageService {
   /**
    * 从URL提取路径
    */
-  private extractPathFromUrl(url: string): string {
-    // 简化实现：从URL中提取路径部分
-    // 实际URL格式：https://cloudStorage-xxx.xxx.com/bucket/path/to/file
-    const parts = url.split('/');
-    const bucketIndex = parts.indexOf(CloudStorageService.DEFAULT_BUCKET);
-
-    if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
-      return parts.slice(bucketIndex + 1).join('/');
+  private extractOwnedPathFromUrl(url: string): string {
+    const marker = `/${CloudStorageService.DEFAULT_BUCKET}/`;
+    const markerIndex = url.indexOf(marker);
+    if (!url.startsWith('https://') || markerIndex < 0) {
+      throw new Error('下载地址不是当前私有存储桶 URL');
     }
-
-    return url;
+    let cloudPath = url.substring(markerIndex + marker.length);
+    const queryIndex = cloudPath.indexOf('?');
+    if (queryIndex >= 0) {
+      cloudPath = cloudPath.substring(0, queryIndex);
+    }
+    const fragmentIndex = cloudPath.indexOf('#');
+    if (fragmentIndex >= 0) {
+      cloudPath = cloudPath.substring(0, fragmentIndex);
+    }
+    if (!cloudPath.startsWith(`${CloudStorageService.IMAGE_FOLDER}/`)) {
+      throw new Error('下载地址不属于漫画私有目录');
+    }
+    const remotePath = cloudPath.substring(CloudStorageService.IMAGE_FOLDER.length + 1);
+    return this.validateOwnedRemotePath(remotePath);
   }
 }

@@ -13,6 +13,8 @@ import { AuthService } from '../service/auth';
 import { Logger } from '../utils/Logger';
 import router from '@ohos.router';
 import { common } from '@kit.AbilityKit';
+import { UserRepository } from '../repository/Repositories';
+import { OnboardingService } from '../service/OnboardingService';
 
 @Entry
 @Component
@@ -35,6 +37,12 @@ struct LoginPage {
    */
   async checkLoginStatus(): Promise<void> {
     try {
+      const forceLogin = await OnboardingService.get().consumeForceLogin();
+      if (forceLogin) {
+        this.loginStatus = '请重新登录以开始首次体验';
+        this.userInfo = '';
+        return;
+      }
       const isLoggedIn = await this.authService.isLoggedIn();
       if (isLoggedIn) {
         const user = await this.authService.getCurrentUser();
@@ -42,6 +50,9 @@ struct LoginPage {
           this.loginStatus = '已登录';
           this.userInfo = `用户: ${user.nickname}\nID: ${user.userId}`;
           Logger.info(LoginPage.TAG, `用户已登录: ${user.userId}`);
+          setTimeout(() => {
+            this.navigateAfterLogin();
+          }, 400);
         }
       } else {
         this.loginStatus = '未登录';
@@ -78,9 +89,9 @@ struct LoginPage {
       this.userInfo = `欢迎，${user.nickname}！\nID: ${user.userId}`;
       Logger.info(LoginPage.TAG, `登录成功: ${user.userId}`);
 
-      // 延迟跳转到主页
+      // 登录后先检查本地档案，未完成时进入三步选择页
       setTimeout(() => {
-        this.navigateToHome();
+        this.navigateAfterLogin();
       }, 1500);
 
     } catch (error) {
@@ -115,7 +126,7 @@ struct LoginPage {
 
       // 延迟跳转到主页
       setTimeout(() => {
-        this.navigateToHome();
+        this.navigateAfterLogin();
       }, 1500);
 
     } catch (error) {
@@ -149,10 +160,20 @@ struct LoginPage {
   navigateToHome(): void {
     try {
       router.pushUrl({
-        url: 'pages/Index'
+        url: 'pages/MainPage'
       });
     } catch (error) {
       Logger.error(LoginPage.TAG, `页面跳转失败: ${error}`);
+    }
+  }
+
+  async navigateAfterLogin(): Promise<void> {
+    try {
+      const completed = await UserRepository.get().isProfileCompleted();
+      router.pushUrl({ url: completed ? 'pages/MainPage' : 'pages/OnboardingProfilePage' });
+    } catch (error) {
+      Logger.error(LoginPage.TAG, `档案状态检查失败: ${error}`);
+      router.pushUrl({ url: 'pages/OnboardingProfilePage' });
     }
   }
 

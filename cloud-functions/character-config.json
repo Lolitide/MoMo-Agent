@@ -1,0 +1,18 @@
+{
+  "character": {
+    "name": "默默",
+    "appearance": "young girl with short brown hair, green eyes, wearing a cozy cream-colored sweater",
+    "traits": ["gentle", "observant", "warm"],
+    "styleKeywords": "soft lighting, warm atmosphere, gentle expression, cozy indoor scene",
+    "referenceImageUrl": "",
+    "protagonistImageUrl": "",
+    "referenceImageFile": "assets/scene-reference.png",
+    "protagonistImageFile": "assets/protagonist.png"
+  },
+  "visualStyle": {
+    "artStyle": "modern anime illustration, soft watercolor style",
+    "colorPalette": "warm earth tones, soft pastels, gentle lighting",
+    "mood": "cozy, heartwarming, peaceful, intimate",
+    "composition": "close-up emotional moments, everyday life scenes"
+  }
+}

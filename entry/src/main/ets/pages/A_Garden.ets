@@ -8,7 +8,7 @@
  *   缩放浮钮（树模式 ±）。
  * 【前置条件 / 假设】
  *   - 依赖：MemoryRepository(订阅制)、GardenController（被 MainPage HDS 菜单调用）、
- *     ShellState.gardenScroller（滚动绑定）、MockData 默认记忆；
+ *     ShellState.gardenScroller（滚动绑定）、MemoryRepository 数据；
  *   - 假设：详情面板/工具栏被“全屏容器”包裹时用 hitTestBehavior 放行点击；
  *     编辑浮窗与搜索/菜单浮窗均为“打开时挂载”，关闭不渲染。
  * 【输入 / 输出（后置条件）】
@@ -28,7 +28,6 @@
 import { MemoryRepository } from '../repository/Repositories';
 import { GardenController } from '../service/Services';
 import { AppRouter, RouteName } from '../router/AppRouter';
-import { MockData } from '../mock/MockData';
 import {
   GardenMode, GardenNodeItem, Memory, MemoryTreeNode, MemoryType, MemoryTypeUtil, PageState
 } from '../model/Models';
@@ -74,7 +73,6 @@ export struct A_Garden {
   @State editTags: string = '';
   @State editSummary: string = '';
   private repo: MemoryRepository = MemoryRepository.get();
-  private nodes: GardenNodeItem[] = MockData.buildGardenNodes();
   private repoListener: () => void = () => {
   };
   private panBase: number = 196;
@@ -180,23 +178,40 @@ export struct A_Garden {
   }
 
   private nodePosOf(mem: Memory): GardenNodeItem {
-    for (let i = 0; i < this.nodes.length; i++) {
-      if (this.nodes[i].memoryId === mem.id) {
-        return this.nodes[i];
+    // Keep memories on the meadow instead of scattering them across the sky.
+    // The fixed anchors also make a memory stay visually stable after refreshes.
+    const anchors: number[][] = [
+      [16, 61], [39, 56], [64, 61], [84, 56],
+      [25, 76], [50, 70], [74, 77], [91, 69]
+    ];
+    let index = 0;
+    for (let i = 0; i < this.memories.length; i++) {
+      if (this.memories[i].id === mem.id) {
+        index = i;
+        break;
       }
-    }
-    let h1 = 0;
-    let h2 = 0;
-    for (let i = 0; i < mem.id.length; i++) {
-      h1 = (h1 * 31 + mem.id.charCodeAt(i)) % 997;
-      h2 = (h2 * 43 + mem.id.charCodeAt(i)) % 991;
     }
     const n = new GardenNodeItem();
     n.id = 'auto-' + mem.id;
     n.memoryId = mem.id;
-    n.x = 12 + (h1 % 60);
-    n.y = 32 + (h2 % 30);
+    if (index < anchors.length) {
+      n.x = anchors[index][0];
+      n.y = anchors[index][1];
+    } else {
+      n.x = 14 + ((index * 29) % 76);
+      n.y = 59 + ((index * 17) % 22);
+    }
     return n;
+  }
+
+  private countOf(type: MemoryType): number {
+    let count = 0;
+    for (let i = 0; i < this.memories.length; i++) {
+      if (this.memories[i].type === type) {
+        count++;
+      }
+    }
+    return count;
   }
 
   // 选中记忆：打开详情面板（detailH 吸附高度）+ 更新编辑浮窗数据源
@@ -326,6 +341,68 @@ export struct A_Garden {
         .opacity(0.96)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
+      // A quiet glass header gives the scene a visual anchor without covering the garden.
+      Column({ space: 14 }) {
+        Row() {
+          Column({ space: 4 }) {
+            Text('记忆花园')
+              .fontSize(Theme.fontSize(12))
+              .fontColor('#5F7A63')
+              .fontWeight(FontWeight.Medium)
+            Text('正在生长的生活片段')
+              .fontSize(Theme.fontSize(20))
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#1D3424')
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          Column({ space: 1 }) {
+            Text(this.memories.length.toString())
+              .fontSize(Theme.fontSize(24))
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#2C8750')
+            Text('片记忆')
+              .fontSize(Theme.fontSize(10))
+              .fontColor('#6F8272')
+          }
+          .width(54)
+          .alignItems(HorizontalAlign.End)
+        }
+        .width('100%')
+
+        Row({ space: 3 }) {
+          ForEach([
+            MemoryType.LIFE, MemoryType.STUDY, MemoryType.INTEREST,
+            MemoryType.GOAL, MemoryType.IMPORTANT
+          ], (type: MemoryType) => {
+            Row({ space: 5 }) {
+              Column()
+                .width(7)
+                .height(7)
+                .borderRadius(4)
+                .backgroundColor(MemoryTypeUtil.colorOf(type))
+              Text(MemoryTypeUtil.nameOf(type) + ' ' + this.countOf(type).toString())
+                .fontSize(Theme.fontSize(10))
+                .fontColor('#66776A')
+            }
+            .padding({ left: 5, right: 5, top: 5, bottom: 5 })
+            .backgroundColor('rgba(255,255,255,0.52)')
+            .borderRadius(12)
+          }, (type: MemoryType) => type.toString())
+        }
+        .width('100%')
+        .justifyContent(FlexAlign.Start)
+      }
+      .width('88%')
+      .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+      .position({ x: '6%', y: 92 })
+      .borderRadius(24)
+      .backgroundColor('rgba(250,255,249,0.82)')
+      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+      .border({ width: 1, color: 'rgba(255,255,255,0.82)' })
+      .shadow({ radius: 22, color: 'rgba(47,84,54,0.12)', offsetY: 7 })
+
       ForEach(this.memories, (m: Memory) => {
         Column() {
           GardenNodeMarker({
@@ -340,7 +417,8 @@ export struct A_Garden {
           x: this.nodePosOf(m).x + '%',
           y: this.nodePosOf(m).y + '%'
         })
-        .translate({ x: -38, y: -30 })
+        .translate({ x: -52, y: -42 })
+        .zIndex(this.selectedMemory !== null && this.selectedMemory.id === m.id ? 5 : 1)
       }, (m: Memory) => m.id)
 
       if (this.memories.length === 0) {
@@ -388,14 +466,14 @@ export struct A_Garden {
               Column({ space: 8 }) {
                 Row() {
                   Text(m.date)
-                    .fontSize(14)
+                    .fontSize(Theme.fontSize(14))
                     .fontWeight(this.selectedMemory !== null && this.selectedMemory.id === m.id
                       ? FontWeight.Bold : FontWeight.Medium)
                     .fontColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
                       ? '#3FA55F' : Theme.SECONDARY)
                   Blank()
                   Text(MemoryTypeUtil.nameOf(m.type))
-                    .fontSize(10)
+                    .fontSize(Theme.fontSize(10))
                     .fontColor(MemoryTypeUtil.colorOf(m.type))
                     .padding({ left: 8, right: 8, top: 2, bottom: 2 })
                     .backgroundColor(MemoryTypeUtil.colorOf(m.type) + '22')
@@ -404,7 +482,7 @@ export struct A_Garden {
                 .width('100%')
 
                 Text(m.title)
-                  .fontSize(15)
+                  .fontSize(Theme.fontSize(15))
                   .fontWeight(FontWeight.Medium)
                   .fontColor(Theme.PRIMARY)
                   .width('100%')
@@ -412,7 +490,7 @@ export struct A_Garden {
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
 
                 Text(m.summary)
-                  .fontSize(13)
+                  .fontSize(Theme.fontSize(13))
                   .fontColor(Theme.SECONDARY)
                   .width('100%')
                   .maxLines(2)
@@ -421,7 +499,7 @@ export struct A_Garden {
                 Row({ space: 6 }) {
                   ForEach(m.tags.slice(0, 3), (t: string) => {
                     Text(t)
-                      .fontSize(10)
+                      .fontSize(Theme.fontSize(10))
                       .fontColor(Theme.TERTIARY)
                       .padding({ left: 8, right: 8, top: 2, bottom: 2 })
                       .backgroundColor('#F0F5F1')
@@ -518,7 +596,7 @@ export struct A_Garden {
     Column() {
       // 标题独占一行，留足空间；日期与标签并列在第二行
       Text(this.sel().title)
-        .fontSize(20)
+        .fontSize(Theme.fontSize(20))
         .fontWeight(FontWeight.Bold)
         .fontColor(Theme.TEXT_MAIN)
         .width('100%')
@@ -527,13 +605,13 @@ export struct A_Garden {
 
       Row() {
         Text(this.sel().date)
-          .fontSize(12)
+          .fontSize(Theme.fontSize(12))
           .fontColor(Theme.TEXT_TERTIARY)
         Blank()
         Row({ space: 6 }) {
           ForEach(this.sel().tags.slice(0, 2), (t: string) => {
             Text(t)
-              .fontSize(11)
+              .fontSize(Theme.fontSize(11))
               .fontColor(Theme.SECONDARY)
               .padding({ left: 10, right: 10, top: 3, bottom: 3 })
               .backgroundColor('#EFF5F0')
@@ -548,13 +626,13 @@ export struct A_Garden {
       Divider().color(Theme.LINE).strokeWidth(0.6).margin({ top: 14 })
 
       Text(this.sel().summary)
-        .fontSize(14)
+        .fontSize(Theme.fontSize(14))
         .fontColor(Theme.TEXT_SUB)
         .width('100%')
         .margin({ top: 12 })
 
       Text(this.sel().content)
-        .fontSize(13)
+        .fontSize(Theme.fontSize(13))
         .fontColor(Theme.TEXT_TERTIARY)
         .lineHeight(20)
         .width('100%')
@@ -565,7 +643,7 @@ export struct A_Garden {
       // 小工具栏：编辑 / 删除 / 撤销 / 重做（等宽对齐居中，含点击反馈）
       Row() {
         Column() {
-          SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(20).fontColor(['#3E6B4B'])
+          SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(Theme.fontSize(20)).fontColor(['#3E6B4B'])
         }
         .width('25%')
         .height(44)
@@ -578,7 +656,7 @@ export struct A_Garden {
         .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.9 })
 
         Column() {
-          SymbolGlyph($r('sys.symbol.trash')).fontSize(20).fontColor(['#C4573F'])
+          SymbolGlyph($r('sys.symbol.trash')).fontSize(Theme.fontSize(20)).fontColor(['#C4573F'])
         }
         .width('25%')
         .height(44)
@@ -589,7 +667,7 @@ export struct A_Garden {
         .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.9 })
 
         Column() {
-          SymbolGlyph($r('sys.symbol.arrow_counterclockwise')).fontSize(20)
+          SymbolGlyph($r('sys.symbol.arrow_counterclockwise')).fontSize(Theme.fontSize(20))
             .fontColor(this.undoStack.length > 0 ? ['#3E6B4B'] : ['#C9D6CC'])
         }
         .width('25%')
@@ -634,7 +712,7 @@ export struct A_Garden {
         .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.9 })
 
         Column() {
-          SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(20)
+          SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(Theme.fontSize(20))
             .fontColor(this.redoStack.length > 0 ? ['#3E6B4B'] : ['#C9D6CC'])
         }
         .width('25%')
@@ -717,7 +795,7 @@ export struct A_Garden {
     Column({ space: 12 }) {
       Row({ space: 10 }) {
         TextInput({ placeholder: '搜索记忆…', text: this.searchText })
-          .fontSize(15)
+          .fontSize(Theme.fontSize(15))
           .height(44)
           .borderRadius(23)
           .backgroundColor('rgba(255,255,255,0.95)')
@@ -729,7 +807,7 @@ export struct A_Garden {
         Column() {
           Stack() {
             Column().width(36).height(36).borderRadius(999).backgroundColor('rgba(255,255,255,0.95)')
-            SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([Theme.SECONDARY])
+            SymbolGlyph($r('sys.symbol.xmark')).fontSize(Theme.fontSize(16)).fontColor([Theme.SECONDARY])
           }
         }
         .width(36)
@@ -744,7 +822,7 @@ export struct A_Garden {
       Column() {
         if (this.filtered().length === 0) {
           Text('没有找到相关记忆')
-            .fontSize(13)
+            .fontSize(Theme.fontSize(13))
             .fontColor(Theme.TERTIARY)
             .margin({ top: 30, bottom: 30 })
         } else {
@@ -754,18 +832,18 @@ export struct A_Garden {
                 Row({ space: 10 }) {
                   Column({ space: 4 }) {
                     Text(m.title)
-                      .fontSize(14)
+                      .fontSize(Theme.fontSize(14))
                       .fontWeight(FontWeight.Medium)
                       .fontColor(Theme.PRIMARY)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                     Text(m.date + ' · ' + MemoryTypeUtil.nameOf(m.type))
-                      .fontSize(11)
+                      .fontSize(Theme.fontSize(11))
                       .fontColor(Theme.TERTIARY)
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
-                  SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(14).fontColor([Theme.TERTIARY])
+                  SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(Theme.fontSize(14)).fontColor([Theme.TERTIARY])
                 }
                 .width('100%')
                 .height(56)
@@ -807,7 +885,7 @@ export struct A_Garden {
       // 编辑模式仅用“取消”退出；不另设右上角关闭按钮（浮层由系统关闭泡/拖拽关闭）
       Row() {
         Text('编辑记忆')
-          .fontSize(19)
+          .fontSize(Theme.fontSize(19))
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.PRIMARY)
           .layoutWeight(1)
@@ -817,11 +895,11 @@ export struct A_Garden {
 
       Column({ space: 6 }) {
         Text('记忆标题')
-          .fontSize(12)
+          .fontSize(Theme.fontSize(12))
           .fontColor(Theme.TEXT_TERTIARY)
           .width('100%')
         TextInput({ text: this.editTitle, placeholder: '默认沿用当前节点标题' })
-          .fontSize(15)
+          .fontSize(Theme.fontSize(15))
           .focusable(true)
           .backgroundColor('#FFFFFF')
           .borderRadius(14)
@@ -836,11 +914,11 @@ export struct A_Garden {
       .padding({ left: 20, right: 20, top: 10 })
       Column({ space: 6 }) {
         Text('标签（逗号分隔）')
-          .fontSize(12)
+          .fontSize(Theme.fontSize(12))
           .fontColor(Theme.TEXT_TERTIARY)
           .width('100%')
         TextInput({ text: this.editTags, placeholder: '如：目标，漫画' })
-          .fontSize(14)
+          .fontSize(Theme.fontSize(14))
           .focusable(true)
           .backgroundColor('#FFFFFF')
           .borderRadius(14)
@@ -855,11 +933,11 @@ export struct A_Garden {
       .padding({ left: 20, right: 20, top: 10 })
       Column({ space: 6 }) {
         Text('记忆摘要')
-          .fontSize(12)
+          .fontSize(Theme.fontSize(12))
           .fontColor(Theme.TEXT_TERTIARY)
           .width('100%')
         TextArea({ text: this.editSummary, placeholder: '默认沿用当前节点摘要' })
-          .fontSize(14)
+          .fontSize(Theme.fontSize(14))
           .focusable(true)
           .backgroundColor('#FFFFFF')
           .borderRadius(14)
@@ -875,7 +953,7 @@ export struct A_Garden {
 
       Row({ space: 14 }) {
         Button('保存')
-          .fontSize(15)
+          .fontSize(Theme.fontSize(15))
           .fontWeight(FontWeight.Medium)
           .fontColor('#1E3A26')
           .backgroundColor(Theme.ACCENT_GREEN)
@@ -925,7 +1003,7 @@ export struct A_Garden {
             PromptUtil.toast('已保存修改');
           })
         Button('取消')
-          .fontSize(15)
+          .fontSize(Theme.fontSize(15))
           .fontColor(Theme.SECONDARY)
           .backgroundColor('#EEF3EE')
           .height(50)
@@ -953,7 +1031,7 @@ export struct A_Garden {
           this.gardenView()
         } else if (this.mode === GardenMode.OUTLINE) {
           this.outlineView()
-        } else {
+        } else if (this.mode === GardenMode.TREE) {
           this.treeView()
         }
       }

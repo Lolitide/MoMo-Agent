@@ -43,7 +43,7 @@ export struct EmptyState {
     Column({ space: 12 }) {
       Stack() {
         Column().width(84).height(84).borderRadius(999).backgroundColor(Theme.BRAND_BG)
-        SymbolGlyph(this.icon).fontSize(38).fontColor([Theme.BRAND_DEEP])
+        SymbolGlyph(this.icon).fontSize(Theme.fontSize(38)).fontColor([Theme.BRAND_DEEP])
       }
       Text(this.text).fontSize(Theme.FONT_BODY).fontColor(Theme.SECONDARY)
     }
@@ -64,7 +64,7 @@ export struct ErrorState {
     Column({ space: 14 }) {
       Stack() {
         Column().width(84).height(84).borderRadius(999).backgroundColor('#FDECEC')
-        SymbolGlyph($r('sys.symbol.xmark_circle')).fontSize(36).fontColor([Theme.DANGER])
+        SymbolGlyph($r('sys.symbol.xmark_circle')).fontSize(Theme.fontSize(36)).fontColor([Theme.DANGER])
       }
       Text(this.text).fontSize(Theme.FONT_BODY).fontColor(Theme.SECONDARY)
       Button('重新加载')

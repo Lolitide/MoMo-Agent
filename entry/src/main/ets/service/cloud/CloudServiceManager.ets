@@ -41,8 +41,9 @@ export class CloudServiceManager {
   /**
    * 初始化所有云服务
    */
-  async initialize(): Promise<void> {
+  async initialize(context?: Context): Promise<void> {
     if (this.isInitialized) {
+      await this.cloudStorage.initialize(context);
       Logger.info(CloudServiceManager.TAG, '云服务已初始化');
       return;
     }
@@ -53,7 +54,7 @@ export class CloudServiceManager {
       // 并行初始化所有服务
       await Promise.all([
         this.cloudDB.initialize(),
-        this.cloudStorage.initialize(),
+        this.cloudStorage.initialize(context),
         this.cloudFunction.initialize()
       ]);
 

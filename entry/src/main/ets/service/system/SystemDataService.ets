@@ -20,7 +20,7 @@
  */
 
 import { calendarManager } from '@kit.CalendarKit';
-import { reminderAgentManager } from '@kit.ReminderAgentKit';
+import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { abilityAccessCtrl, PermissionRequestResult, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
@@ -56,7 +56,8 @@ export class SystemDataService {
       try {
         this.calendarMgr = calendarManager.getCalendarManager(context);
       } catch (err) {
-        console.error('初始化日历管理器失败:', err);
+        const error = err as BusinessError;
+        console.error(`初始化日历管理器失败: ${error.message}`);
       }
     }
   }
@@ -90,7 +91,8 @@ export class SystemDataService {
         }
       }
     } catch (err) {
-      console.error('权限请求失败:', err);
+      const error = err as BusinessError;
+      console.error(`权限请求失败: ${error.message}`);
     }
   }
 
@@ -130,7 +132,7 @@ export class SystemDataService {
 
     try {
       // 获取默认日历账户
-      const calendars = await this.calendarMgr.getCalendars();
+      const calendars = await this.calendarMgr.getAllCalendars();
       if (calendars.length === 0) {
         return [];
       }
@@ -145,10 +147,11 @@ export class SystemDataService {
 
       for (const calendar of calendars) {
         try {
-          const calendarEvents = await calendar.getEvents(
+          const filter = calendarManager.EventFilter.filterByTime(
             startOfDay.getTime(),
             endOfDay.getTime()
           );
+          const calendarEvents = await calendar.getEvents(filter);
 
           for (const event of calendarEvents) {
             events.push({
@@ -161,13 +164,15 @@ export class SystemDataService {
             });
           }
         } catch (err) {
-          console.error(`查询日历 ${calendar.id} 失败:`, err);
+          const error = err as BusinessError;
+          console.error(`查询日历失败: ${error.message}`);
         }
       }
 
       return events;
     } catch (err) {
-      console.error('读取日历事件失败:', err);
+      const error = err as BusinessError;
+      console.error(`读取日历事件失败: ${error.message}`);
       return [];
     }
   }
@@ -191,7 +196,7 @@ export class SystemDataService {
         const reminderTime = this.getReminderTime(reminder);
         if (reminderTime && this.formatDate(reminderTime) === targetDay) {
           events.push({
-            id: `rem_${reminder.reminderId}`,
+            id: `rem_${reminder.notificationId || 0}`,
             title: reminder.title || '待办事项',
             time: this.formatTime(reminderTime),
             category: 'todo',
@@ -203,7 +208,8 @@ export class SystemDataService {
 
       return events;
     } catch (err) {
-      console.error('读取提醒失败:', err);
+      const error = err as BusinessError;
+      console.error(`读取提醒失败: ${error.message}`);
       return [];
     }
   }
@@ -213,22 +219,28 @@ export class SystemDataService {
    */
   private getReminderTime(reminder: reminderAgentManager.ReminderRequest): Date | null {
     try {
-      if ('dateTime' in reminder && reminder.dateTime) {
-        // 日历型提醒
-        const dt = reminder.dateTime;
+      if (reminder.reminderType === reminderAgentManager.ReminderType.REMINDER_TYPE_CALENDAR) {
+        const calendarReminder = reminder as reminderAgentManager.ReminderRequestCalendar;
+        const dt = calendarReminder.dateTime;
         return new Date(
           dt.year,
           dt.month - 1,
           dt.day,
-          dt.hour || 0,
-          dt.minute || 0
+          dt.hour,
+          dt.minute
         );
-      } else if ('triggerTimeInSeconds' in reminder && reminder.triggerTimeInSeconds) {
-        // 倒计时提醒
-        return new Date(reminder.triggerTimeInSeconds * 1000);
+      } else if (reminder.reminderType === reminderAgentManager.ReminderType.REMINDER_TYPE_TIMER) {
+        const timerReminder = reminder as reminderAgentManager.ReminderRequestTimer;
+        return new Date(timerReminder.triggerTimeInSeconds * 1000);
+      } else if (reminder.reminderType === reminderAgentManager.ReminderType.REMINDER_TYPE_ALARM) {
+        const alarmReminder = reminder as reminderAgentManager.ReminderRequestAlarm;
+        const alarmTime = new Date();
+        alarmTime.setHours(alarmReminder.hour, alarmReminder.minute, 0, 0);
+        return alarmTime;
       }
     } catch (err) {
-      console.error('解析提醒时间失败:', err);
+      const error = err as BusinessError;
+      console.error(`解析提醒时间失败: ${error.message}`);
     }
     return null;
   }
@@ -236,7 +248,7 @@ export class SystemDataService {
   /**
    * 分类日历事件
    */
-  private categorizeCalendarEvent(event: any): string {
+  private categorizeCalendarEvent(event: calendarManager.Event): string {
     const title = (event.title || '').toLowerCase();
     const desc = (event.description || '').toLowerCase();
     const text = title + ' ' + desc;

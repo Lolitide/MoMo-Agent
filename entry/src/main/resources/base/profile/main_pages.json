@@ -1,8 +1,7 @@
 {
   "src": [
     "pages/MainPage",
-    "pages/B_AITest_V2",
-    "pages/LoginPage",
-    "pages/AuthTestPage"
+    "pages/OnboardingProfilePage",
+    "pages/LoginPage"
   ]
 }

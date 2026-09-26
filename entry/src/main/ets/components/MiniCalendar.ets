@@ -68,7 +68,7 @@ export struct MiniCalendar {
     Column() {
       Stack() {
         Column().width(30).height(30).borderRadius(999).backgroundColor('rgba(0,0,0,0.05)')
-        SymbolGlyph(icon).fontSize(14).fontColor([Theme.SECONDARY])
+        SymbolGlyph(icon).fontSize(Theme.fontSize(14)).fontColor([Theme.SECONDARY])
       }
     }
     .width(30)
@@ -86,7 +86,7 @@ export struct MiniCalendar {
           this.prevMonth();
         })
         Text(this.year.toString() + ' 年 ' + (this.month + 1).toString() + ' 月')
-          .fontSize(15)
+          .fontSize(Theme.fontSize(15))
           .fontWeight(FontWeight.Medium)
           .fontColor(Theme.PRIMARY)
           .layoutWeight(1)
@@ -103,7 +103,7 @@ export struct MiniCalendar {
       Row() {
         ForEach(this.weekNames, (w: string) => {
           Text(w)
-            .fontSize(11)
+            .fontSize(Theme.fontSize(11))
             .fontColor(Theme.TERTIARY)
             .width('14.2%')
             .textAlign(TextAlign.Center)
@@ -118,7 +118,7 @@ export struct MiniCalendar {
           } else {
             Column() {
               Text(d.toString())
-                .fontSize(13)
+                .fontSize(Theme.fontSize(13))
                 .fontWeight(this.isSelected(d) ? FontWeight.Bold : FontWeight.Normal)
                 .fontColor(this.isSelected(d) ? '#FFFFFF' : (this.isToday(d) ? Theme.BRAND_DEEP : Theme.PRIMARY))
             }

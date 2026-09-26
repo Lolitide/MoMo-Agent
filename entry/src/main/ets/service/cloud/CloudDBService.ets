@@ -13,25 +13,22 @@
  */
 import { Logger } from '../../utils/Logger';
 import { UserProfile, DailyRecord, ComicImage, UserFeedback, LongTermMemory } from './CloudDBModels';
-import cloudDatabase from '@hms.core.cloudDatabase';
+import { cloudDatabase } from '@kit.CloudFoundationKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
 export class CloudDBService {
   private static readonly TAG = 'CloudDBService';
   private static instance: CloudDBService | null = null;
 
-  private agConnectInstance?: cloudDatabase.AGConnectCloudDB;
-  private cloudDBZone?: cloudDatabase.CloudDBZone;
+  private cloudDBZone: cloudDatabase.DatabaseZone | null = null;
   private isInitialized: boolean = false;
+  // 这里只保存已经由 Cloud Foundation 认证链路确认过的用户 ID。
+  // 客户端传入的 userId 只做纵深校验，真正的隔离仍由云端 Creator ACL 完成。
+  private verifiedUserId: string | null = null;
 
   // 云数据库配置
   private static readonly ZONE_NAME = 'MomoDataZone';
-  private static readonly OBJECT_TYPE_INFO_MAP: Map<string, cloudDatabase.ObjectTypeInfo> = new Map();
-
-  private constructor() {
-    // 初始化对象类型映射
-    CloudDBService.initObjectTypeInfoMap();
-  }
+  private constructor() {}
 
   static get(): CloudDBService {
     if (CloudDBService.instance === null) {
@@ -41,38 +38,61 @@ export class CloudDBService {
   }
 
   /**
-   * 初始化对象类型信息
+   * 绑定已经完成 Cloud Foundation 认证的用户。
+   * 设备游客 ID、mock token 和任意客户端字符串都不能调用方自行视为已验证身份。
    */
-  private static initObjectTypeInfoMap(): void {
-    // UserProfile
-    this.OBJECT_TYPE_INFO_MAP.set('UserProfile', {
-      name: 'UserProfile',
-      primaryKey: 'userId'
-    });
+  bindVerifiedUser(userId: string): void {
+    this.validateIdentifier(userId, 'userId');
+    this.verifiedUserId = userId;
+    Logger.info(CloudDBService.TAG, '已绑定可验证云身份');
+  }
 
-    // DailyRecord
-    this.OBJECT_TYPE_INFO_MAP.set('DailyRecord', {
-      name: 'DailyRecord',
-      primaryKey: 'recordId'
-    });
+  clearVerifiedUser(): void {
+    this.verifiedUserId = null;
+  }
 
-    // ComicImage
-    this.OBJECT_TYPE_INFO_MAP.set('ComicImage', {
-      name: 'ComicImage',
-      primaryKey: 'imageId'
-    });
+  private validateIdentifier(value: string, fieldName: string): void {
+    if (!value || value.length > 200 || /[\u0000-\u001f\u007f]/.test(value)) {
+      throw new Error(`${fieldName} 无效`);
+    }
+  }
 
-    // UserFeedback
-    this.OBJECT_TYPE_INFO_MAP.set('UserFeedback', {
-      name: 'UserFeedback',
-      primaryKey: 'feedbackId'
-    });
+  private validateDate(date: string): void {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error('date 必须使用 YYYY-MM-DD 格式');
+    }
+  }
 
-    // LongTermMemory
-    this.OBJECT_TYPE_INFO_MAP.set('LongTermMemory', {
-      name: 'LongTermMemory',
-      primaryKey: 'memoryId'
-    });
+  private normalizeLegacyDate(date: string): string {
+    if (/^\d{4}\.\d{2}\.\d{2}$/.test(date)) {
+      return date.replace(/\./g, '-');
+    }
+    return date;
+  }
+
+  private validatePagination(limit: number, offset: number = 0): void {
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 200 ||
+      !Number.isInteger(offset) || offset < 0) {
+      throw new Error('分页参数无效');
+    }
+  }
+
+  private ensureVerifiedOwner(userId: string): void {
+    this.ensureInitialized();
+    this.validateIdentifier(userId, 'userId');
+    if (!this.verifiedUserId) {
+      throw new Error('云数据库拒绝访问：尚未绑定可验证的 Cloud Foundation 用户身份');
+    }
+    if (this.verifiedUserId !== userId) {
+      throw new Error('云数据库拒绝访问：数据 userId 与当前云身份不一致');
+    }
+  }
+
+  private operationError(operation: string, err: Object): Error {
+    const error = err as BusinessError;
+    const code = error.code ? `${error.code}` : 'unknown';
+    const message = error.message ? error.message : `${err}`;
+    return new Error(`${operation}失败 (${code}): ${message}`);
   }
 
   /**
@@ -87,27 +107,15 @@ export class CloudDBService {
     try {
       Logger.info(CloudDBService.TAG, '初始化云数据库...');
 
-      // 1. 获取AGConnectCloudDB实例
-      this.agConnectInstance = cloudDatabase.AGConnectCloudDB.getInstance();
-
-      // 2. 创建对象类型
-      await this.agConnectInstance.createObjectType(CloudDBService.OBJECT_TYPE_INFO_MAP);
-
-      // 3. 打开云数据库Zone
-      const zoneConfig: cloudDatabase.CloudDBZoneConfig = {
-        zoneName: CloudDBService.ZONE_NAME,
-        syncProperty: cloudDatabase.SyncProperty.CLOUDDBZONE_CLOUD_CACHE,
-        capacity: 100 * 1024 * 1024 // 100MB
-      };
-
-      this.cloudDBZone = await this.agConnectInstance.openCloudDBZone(zoneConfig);
+      this.cloudDBZone = cloudDatabase.zone(CloudDBService.ZONE_NAME);
 
       this.isInitialized = true;
       Logger.info(CloudDBService.TAG, '云数据库初始化成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `初始化失败: ${error.code} - ${error.message}`);
-      throw new Error(`云数据库初始化失败: ${error.message}`);
+      const newError = new Error(`云数据库初始化失败: ${error.message}`);
+      return Promise.reject(newError);
     }
   }
 
@@ -116,7 +124,7 @@ export class CloudDBService {
    */
   private ensureInitialized(): void {
     if (!this.isInitialized || !this.cloudDBZone) {
-      throw new Error('云数据库未初始化，请先调用initialize()');
+      throw new Error('云数据库未初始化，请先调用 initialize()');
     }
   }
 
@@ -126,16 +134,16 @@ export class CloudDBService {
    * 创建或更新用户
    */
   async upsertUser(user: UserProfile): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(user.userId);
 
     try {
       user.updatedAt = Date.now();
-      await this.cloudDBZone!.executeUpsert(user);
-      Logger.info(CloudDBService.TAG, `用户保存成功: ${user.userId}`);
+      await this.cloudDBZone!.upsert(user);
+      Logger.info(CloudDBService.TAG, '用户保存成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `保存用户失败: ${error.message}`);
-      throw error;
+      throw this.operationError('保存用户', error);
     }
   }
 
@@ -143,20 +151,19 @@ export class CloudDBService {
    * 获取用户信息
    */
   async getUser(userId: string): Promise<UserProfile | null> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(userId);
 
     try {
-      const query = cloudDatabase.CloudDBZoneQuery.where(UserProfile);
+      const query = new cloudDatabase.DatabaseQuery(UserProfile);
       query.equalTo('userId', userId);
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      const results = snapshot.getSnapshotObjects();
+      const results = await this.cloudDBZone!.query(query);
 
       return results.length > 0 ? results[0] as UserProfile : null;
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取用户失败: ${error.message}`);
-      return null;
+      throw this.operationError('获取用户', error);
     }
   }
 
@@ -177,7 +184,7 @@ export class CloudDBService {
       user.imageQuotaUsed = 0;
       user.lastQuotaReset = now;
       await this.upsertUser(user);
-      Logger.info(CloudDBService.TAG, `用户配额已重置: ${userId}`);
+      Logger.info(CloudDBService.TAG, '用户配额已重置');
     }
 
     return user;
@@ -187,6 +194,9 @@ export class CloudDBService {
    * 消耗LLM配额
    */
   async consumeLLMQuota(userId: string, amount: number = 1): Promise<boolean> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('LLM 配额消耗量必须是正整数');
+    }
     const user = await this.checkAndResetQuota(userId);
     if (!user) return false;
 
@@ -204,6 +214,9 @@ export class CloudDBService {
    * 消耗文生图配额
    */
   async consumeImageQuota(userId: string, amount: number = 1): Promise<boolean> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('图片配额消耗量必须是正整数');
+    }
     const user = await this.checkAndResetQuota(userId);
     if (!user) return false;
 
@@ -223,16 +236,21 @@ export class CloudDBService {
    * 保存每日记录
    */
   async upsertDailyRecord(record: DailyRecord): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(record.userId);
+    this.validateIdentifier(record.recordId, 'recordId');
+    this.validateDate(record.date);
+    if (record.recordId !== `${record.userId}_${record.date}`) {
+      throw new Error('每日记录拒绝保存：recordId 与 userId/date 不一致');
+    }
 
     try {
       record.updatedAt = Date.now();
-      await this.cloudDBZone!.executeUpsert(record);
-      Logger.info(CloudDBService.TAG, `每日记录保存成功: ${record.recordId}`);
+      await this.cloudDBZone!.upsert(record);
+      Logger.info(CloudDBService.TAG, '每日记录保存成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `保存记录失败: ${error.message}`);
-      throw error;
+      throw this.operationError('保存记录', error);
     }
   }
 
@@ -240,21 +258,21 @@ export class CloudDBService {
    * 获取指定日期的记录
    */
   async getDailyRecord(userId: string, date: string): Promise<DailyRecord | null> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(userId);
+    this.validateDate(date);
 
     try {
       const recordId = `${userId}_${date}`;
-      const query = cloudDatabase.CloudDBZoneQuery.where(DailyRecord);
-      query.equalTo('recordId', recordId);
+      const query = new cloudDatabase.DatabaseQuery(DailyRecord);
+      query.equalTo('recordId', recordId).equalTo('userId', userId);
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      const results = snapshot.getSnapshotObjects();
+      const results = await this.cloudDBZone!.query(query);
 
       return results.length > 0 ? results[0] as DailyRecord : null;
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取记录失败: ${error.message}`);
-      return null;
+      throw this.operationError('获取记录', error);
     }
   }
 
@@ -262,20 +280,20 @@ export class CloudDBService {
    * 获取用户的所有记录（分页）
    */
   async getUserRecords(userId: string, limit: number = 30, offset: number = 0): Promise<DailyRecord[]> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(userId);
+    this.validatePagination(limit, offset);
 
     try {
-      const query = cloudDatabase.CloudDBZoneQuery.where(DailyRecord);
+      const query = new cloudDatabase.DatabaseQuery(DailyRecord);
       query.equalTo('userId', userId)
         .orderByDesc('date')
         .limit(limit, offset);
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      return snapshot.getSnapshotObjects() as DailyRecord[];
+      return await this.cloudDBZone!.query(query);
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取记录列表失败: ${error.message}`);
-      return [];
+      throw this.operationError('获取记录列表', error);
     }
   }
 
@@ -285,35 +303,48 @@ export class CloudDBService {
    * 保存漫画图片记录
    */
   async upsertComicImage(image: ComicImage): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(image.userId);
+    this.validateIdentifier(image.imageId, 'imageId');
+    this.validateIdentifier(image.recordId, 'recordId');
+    if (!Number.isInteger(image.panelIndex) || image.panelIndex < 0) {
+      throw new Error('panelIndex 无效');
+    }
+    if (image.imageId !== `${image.recordId}_${image.panelIndex}` ||
+      !image.recordId.startsWith(`${image.userId}_`)) {
+      throw new Error('漫画图片拒绝保存：主键或记录所有者不一致');
+    }
 
     try {
-      await this.cloudDBZone!.executeUpsert(image);
-      Logger.info(CloudDBService.TAG, `漫画图片保存成功: ${image.imageId}`);
+      await this.cloudDBZone!.upsert(image);
+      Logger.info(CloudDBService.TAG, '漫画图片保存成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `保存图片失败: ${error.message}`);
-      throw error;
+      throw this.operationError('保存图片', error);
     }
   }
 
   /**
    * 获取记录的所有漫画图片
    */
-  async getComicImages(recordId: string): Promise<ComicImage[]> {
-    this.ensureInitialized();
+  async getComicImages(userId: string, recordId: string): Promise<ComicImage[]> {
+    this.ensureVerifiedOwner(userId);
+    this.validateIdentifier(recordId, 'recordId');
+    if (!recordId.startsWith(`${userId}_`)) {
+      throw new Error('漫画图片拒绝查询：recordId 不属于当前用户');
+    }
 
     try {
-      const query = cloudDatabase.CloudDBZoneQuery.where(ComicImage);
+      const query = new cloudDatabase.DatabaseQuery(ComicImage);
       query.equalTo('recordId', recordId)
+        .equalTo('userId', userId)
         .orderByAsc('panelIndex');
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      return snapshot.getSnapshotObjects() as ComicImage[];
+      return await this.cloudDBZone!.query(query);
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取图片列表失败: ${error.message}`);
-      return [];
+      throw this.operationError('获取图片列表', error);
     }
   }
 
@@ -323,15 +354,19 @@ export class CloudDBService {
    * 提交用户反馈
    */
   async submitFeedback(feedback: UserFeedback): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(feedback.userId);
+    this.validateIdentifier(feedback.feedbackId, 'feedbackId');
+    if (!feedback.type || !feedback.content) {
+      throw new Error('反馈类型和内容不能为空');
+    }
 
     try {
-      await this.cloudDBZone!.executeUpsert(feedback);
-      Logger.info(CloudDBService.TAG, `反馈提交成功: ${feedback.feedbackId}`);
+      await this.cloudDBZone!.upsert(feedback);
+      Logger.info(CloudDBService.TAG, '反馈提交成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `提交反馈失败: ${error.message}`);
-      throw error;
+      throw this.operationError('提交反馈', error);
     }
   }
 
@@ -341,16 +376,24 @@ export class CloudDBService {
    * 保存长期记忆
    */
   async upsertMemory(memory: LongTermMemory): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(memory.userId);
+    this.validateIdentifier(memory.memoryId, 'memoryId');
+    memory.date = this.normalizeLegacyDate(memory.date);
+    this.validateDate(memory.date);
+    if (!memory.title || memory.dateTimestamp <= 0 || !Number.isInteger(memory.type) ||
+      memory.type < 0 || memory.type > 4 || !Number.isInteger(memory.importance) ||
+      memory.importance < 1 || memory.importance > 5) {
+      throw new Error('记忆必填字段或取值范围无效');
+    }
 
     try {
       memory.updatedAt = Date.now();
-      await this.cloudDBZone!.executeUpsert(memory);
-      Logger.info(CloudDBService.TAG, `记忆保存成功: ${memory.memoryId}`);
+      await this.cloudDBZone!.upsert(memory);
+      Logger.info(CloudDBService.TAG, '记忆保存成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `保存记忆失败: ${error.message}`);
-      throw error;
+      throw this.operationError('保存记忆', error);
     }
   }
 
@@ -358,20 +401,20 @@ export class CloudDBService {
    * 获取指定记忆
    */
   async getMemory(userId: string, memoryId: string): Promise<LongTermMemory | null> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(userId);
+    this.validateIdentifier(memoryId, 'memoryId');
 
     try {
-      const query = cloudDatabase.CloudDBZoneQuery.where(LongTermMemory);
+      const query = new cloudDatabase.DatabaseQuery(LongTermMemory);
       query.equalTo('memoryId', memoryId).equalTo('userId', userId);
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      const results = snapshot.getSnapshotObjects();
+      const results = await this.cloudDBZone!.query(query);
 
       return results.length > 0 ? results[0] as LongTermMemory : null;
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取记忆失败: ${error.message}`);
-      return null;
+      throw this.operationError('获取记忆', error);
     }
   }
 
@@ -379,20 +422,20 @@ export class CloudDBService {
    * 获取用户的所有记忆（分页）
    */
   async getUserMemories(userId: string, limit: number = 100, offset: number = 0): Promise<LongTermMemory[]> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(userId);
+    this.validatePagination(limit, offset);
 
     try {
-      const query = cloudDatabase.CloudDBZoneQuery.where(LongTermMemory);
+      const query = new cloudDatabase.DatabaseQuery(LongTermMemory);
       query.equalTo('userId', userId)
         .orderByDesc('dateTimestamp')
         .limit(limit, offset);
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      return snapshot.getSnapshotObjects() as LongTermMemory[];
+      return await this.cloudDBZone!.query(query);
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取记忆列表失败: ${error.message}`);
-      return [];
+      throw this.operationError('获取记忆列表', error);
     }
   }
 
@@ -400,21 +443,24 @@ export class CloudDBService {
    * 按类型获取记忆
    */
   async getMemoriesByType(userId: string, type: number, limit: number = 50): Promise<LongTermMemory[]> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(userId);
+    this.validatePagination(limit);
+    if (!Number.isInteger(type) || type < 0 || type > 4) {
+      throw new Error('记忆类型无效');
+    }
 
     try {
-      const query = cloudDatabase.CloudDBZoneQuery.where(LongTermMemory);
+      const query = new cloudDatabase.DatabaseQuery(LongTermMemory);
       query.equalTo('userId', userId)
         .equalTo('type', type)
         .orderByDesc('dateTimestamp')
         .limit(limit);
 
-      const snapshot = await this.cloudDBZone!.executeQuery(query);
-      return snapshot.getSnapshotObjects() as LongTermMemory[];
+      return await this.cloudDBZone!.query(query);
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `获取分类记忆失败: ${error.message}`);
-      return [];
+      throw this.operationError('获取分类记忆', error);
     }
   }
 
@@ -422,15 +468,16 @@ export class CloudDBService {
    * 删除记忆
    */
   async deleteMemory(memory: LongTermMemory): Promise<void> {
-    this.ensureInitialized();
+    this.ensureVerifiedOwner(memory.userId);
+    this.validateIdentifier(memory.memoryId, 'memoryId');
 
     try {
-      await this.cloudDBZone!.executeDelete(memory);
-      Logger.info(CloudDBService.TAG, `记忆删除成功: ${memory.memoryId}`);
+      await this.cloudDBZone!.delete(memory);
+      Logger.info(CloudDBService.TAG, '记忆删除成功');
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `删除记忆失败: ${error.message}`);
-      throw error;
+      throw this.operationError('删除记忆', error);
     }
   }
 
@@ -439,14 +486,20 @@ export class CloudDBService {
    */
   async deleteMemories(memories: LongTermMemory[]): Promise<void> {
     this.ensureInitialized();
+    if (memories.length === 0) {
+      return;
+    }
+    for (let i = 0; i < memories.length; i++) {
+      this.ensureVerifiedOwner(memories[i].userId);
+    }
 
     try {
-      await this.cloudDBZone!.executeDelete(memories);
+      await this.cloudDBZone!.delete(memories);
       Logger.info(CloudDBService.TAG, `批量删除记忆成功，共${memories.length}条`);
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudDBService.TAG, `批量删除记忆失败: ${error.message}`);
-      throw error;
+      throw this.operationError('批量删除记忆', error);
     }
   }
 
@@ -456,14 +509,9 @@ export class CloudDBService {
    * 关闭云数据库
    */
   async close(): Promise<void> {
-    if (this.cloudDBZone && this.agConnectInstance) {
-      try {
-        await this.agConnectInstance.closeCloudDBZone(this.cloudDBZone);
-        this.isInitialized = false;
-        Logger.info(CloudDBService.TAG, '云数据库已关闭');
-      } catch (err) {
-        Logger.error(CloudDBService.TAG, `关闭失败: ${err}`);
-      }
-    }
+    this.cloudDBZone = null;
+    this.isInitialized = false;
+    this.verifiedUserId = null;
+    Logger.info(CloudDBService.TAG, '云数据库已关闭');
   }
 }

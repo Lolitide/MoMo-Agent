@@ -27,7 +27,7 @@ import { MoMoState } from '../model/Models';
 @Component
 // “记一笔”表单：voiceOn 控制语音胶囊高亮；文本为空则拦截“默默记下”并提示
 export struct AddSheetContent {
-  @Prop userName: string = '酪酪肽';
+  @Prop userName: string = 'MoMo';
   onDismiss: () => void = () => {};
   onDone: (kind: string) => void = (kind: string) => {};
   @State text: string = '';

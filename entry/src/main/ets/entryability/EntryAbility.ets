@@ -55,7 +55,7 @@ export default class EntryAbility extends UIAbility {
    * 初始化数据同步服务
    */
   private initializeDataSync(): void {
-    DataSyncService.get().initialize()
+    DataSyncService.get().initialize(this.context)
       .then(() => {
         hilog.info(DOMAIN, 'MoMo', '数据同步服务初始化成功');
       })
@@ -69,7 +69,7 @@ export default class EntryAbility extends UIAbility {
    * 初始化 AI 云服务
    */
   private initializeAIService(): void {
-    AIServiceCloud.get().initialize()
+    AIServiceCloud.get().initialize(this.context)
       .then(() => {
         hilog.info(DOMAIN, 'MoMo', 'AI云服务初始化成功');
       })

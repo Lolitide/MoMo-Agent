@@ -9,12 +9,13 @@
  *   - 漫画数据模型
  * 【官方文档】https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V5/agc-clouddb-introduction-0000001700120869-V5
  * ============================================================================
- */
+*/
+import { cloudDatabase } from '@kit.CloudFoundationKit';
 
 /**
  * 用户表（UserProfile）
  */
-export class UserProfile {
+export class UserProfile extends cloudDatabase.DatabaseObject {
   userId: string = '';           // 主键：用户ID（华为OpenID）
   username: string = '';         // 用户昵称
   avatar: string = '';           // 头像URL
@@ -31,6 +32,7 @@ export class UserProfile {
   lastQuotaReset: number = 0;    // 上次配额重置时间
 
   constructor(userId?: string) {
+    super();
     if (userId) {
       this.userId = userId;
       this.createdAt = Date.now();
@@ -38,12 +40,16 @@ export class UserProfile {
       this.lastQuotaReset = Date.now();
     }
   }
+
+  naturalbase_ClassName(): string {
+    return 'UserProfile';
+  }
 }
 
 /**
  * 每日记录表（DailyRecord）
  */
-export class DailyRecord {
+export class DailyRecord extends cloudDatabase.DatabaseObject {
   recordId: string = '';         // 主键：记录ID
   userId: string = '';           // 外键：用户ID
   date: string = '';             // 日期（YYYY-MM-DD）
@@ -61,6 +67,7 @@ export class DailyRecord {
   updatedAt: number = 0;         // 更新时间
 
   constructor(userId?: string, date?: string) {
+    super();
     if (userId && date) {
       this.recordId = `${userId}_${date}`;
       this.userId = userId;
@@ -68,6 +75,10 @@ export class DailyRecord {
       this.createdAt = Date.now();
       this.updatedAt = Date.now();
     }
+  }
+
+  naturalbase_ClassName(): string {
+    return 'DailyRecord';
   }
 
   /**
@@ -121,7 +132,7 @@ export interface DailyEvent {
 /**
  * 漫画图片表（ComicImage）
  */
-export class ComicImage {
+export class ComicImage extends cloudDatabase.DatabaseObject {
   imageId: string = '';          // 主键：图片ID
   userId: string = '';           // 用户ID
   recordId: string = '';         // 关联的记录ID
@@ -138,6 +149,7 @@ export class ComicImage {
   completedAt: number = 0;       // 完成时间
 
   constructor(userId?: string, recordId?: string, panelIndex?: number) {
+    super();
     if (userId && recordId !== undefined && panelIndex !== undefined) {
       this.imageId = `${recordId}_${panelIndex}`;
       this.userId = userId;
@@ -146,12 +158,16 @@ export class ComicImage {
       this.createdAt = Date.now();
     }
   }
+
+  naturalbase_ClassName(): string {
+    return 'ComicImage';
+  }
 }
 
 /**
  * 用户反馈表（UserFeedback）
  */
-export class UserFeedback {
+export class UserFeedback extends cloudDatabase.DatabaseObject {
   feedbackId: string = '';       // 主键
   userId: string = '';           // 用户ID
   type: string = '';             // 类型：bug/suggestion/other
@@ -161,18 +177,23 @@ export class UserFeedback {
   createdAt: number = 0;         // 创建时间
 
   constructor(userId?: string) {
+    super();
     if (userId) {
       this.feedbackId = `feedback_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       this.userId = userId;
       this.createdAt = Date.now();
     }
   }
+
+  naturalbase_ClassName(): string {
+    return 'UserFeedback';
+  }
 }
 
 /**
  * 长期记忆表（LongTermMemory）
  */
-export class LongTermMemory {
+export class LongTermMemory extends cloudDatabase.DatabaseObject {
   memoryId: string = '';         // 主键：记忆ID
   userId: string = '';           // 外键：用户ID
   title: string = '';            // 标题
@@ -196,12 +217,17 @@ export class LongTermMemory {
   updatedAt: number = 0;         // 更新时间
 
   constructor(userId?: string, memoryId?: string) {
+    super();
     if (userId && memoryId) {
       this.memoryId = memoryId;
       this.userId = userId;
       this.createdAt = Date.now();
       this.updatedAt = Date.now();
     }
+  }
+
+  naturalbase_ClassName(): string {
+    return 'LongTermMemory';
   }
 
   /**

@@ -14,8 +14,8 @@
 
 **第一轮（Mock UI 全量实现）已完成。** 当前仓库是一个可运行、可点击、可导航的完整产品骨架：全部页面使用 Mock 数据驱动，AI / 系统数据 / 跨设备能力均通过 Repository 与 Service 层隔离，为后续接入真实能力预留了替换接口。
 
-- 包名：`com.agent.momo`
-- 版本：1.0.0
+- 包名：`com.example.momo`
+- 版本：2.0
 - 目标设备：phone
 
 ## 技术栈
@@ -109,6 +109,12 @@ entry/src/main/ets/
 2. 连接 HarmonyOS NEXT 手机或启动模拟器（SDK 6.0.2(22)+，HDS 组件需 6.1.0(23) 特性，低版本会降级警告）；
 3. 签名配置后构建安装 `entry` 模块即可运行。
 
+### 共享后端与签名说明
+
+如果你要分发自己已经签名的应用，让其他人直接使用你的华为登录和云函数后端，请先阅读 [`PUBLIC_REPOSITORY_SETUP.md`](PUBLIC_REPOSITORY_SETUP.md)。云函数的 DeepSeek、Ark 等服务密钥只配置在华为云函数环境变量中，不能写入仓库；`.p12` 私钥和签名密码也不能共享。
+
+当前工程默认把游客和未完成 Cloud Foundation 身份绑定的数据保存在本机。AI 云函数可以使用共享 AGC 项目，但 CloudDB/Cloud Storage 只有在完成真实云身份与用户级 ACL 配置后才会启用，不能仅凭客户端 `userId` 实现多人数据隔离。
+
 调试入口：启动参数 `want.parameters.autoNav` 支持 `B_TodayMemory` / `B_DailyComic` / `B_About` / `garden-search` / `garden-tree` / `garden-outline` / `add`，可直接跳转对应页面验证。
 
 ## 设计资产：记忆花园背景图
@@ -137,7 +143,7 @@ design/garden/
 
 | 字段 | 值 |
 | --- | --- |
-| 昵称 | 酪酪肽 |
+| 昵称 | MoMo |
 | 签名 | 今天也要好好生活呀 |
 
 ### 默默状态（`buildCompanion`）
@@ -217,7 +223,7 @@ design/garden/
 - 今日状态页：切换日期提示"（Mock 数据）"、刷新提示"Mock 数据未变化"
 - 今日漫画页：重新生成提示、仅支持查看当天；内置 Mock 错误态演示（`ComicRepository.loadFailed`，菜单可恢复）
 - 设置页：主题色 / 深色模式 / 字号 / 低打扰 / 权限开关均 Toast 反馈；"清空记忆"与"恢复示例数据"真实操作 Mock 仓库（`clearAll` / `restoreSamples`）；清理缓存提示"已释放 1.2 MB（Mock）"
-- 关于页：外部链接仅展示；页脚版本"MoMo 1.0.0 · 第一轮 Mock UI"
+- 关于页：外部链接仅展示；页脚版本"MoMo 2.0 · 正式体验版"
 
 ### 占位图片资源（`resources/base/media/`）
 

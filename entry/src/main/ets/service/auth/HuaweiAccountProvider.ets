@@ -88,7 +88,7 @@ export class HuaweiAccountProvider extends AuthProvider {
 
       // 设置需要的权限范围
       authRequest.scopes = ['profile']; // profile包含昵称和头像
-      authRequest.forceAuthorization = false; // 已登录则不再显示授权页面
+      authRequest.forceAuthorization = true; // 首次登录时引导用户完成授权
 
       const authResponse: authentication.AuthorizationWithHuaweiIDResponse =
         await controller.executeRequest(authRequest) as authentication.AuthorizationWithHuaweiIDResponse;

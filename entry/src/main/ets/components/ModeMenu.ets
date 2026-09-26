@@ -35,10 +35,21 @@ export struct ModeMenu {
   @Builder
   menuRow(title: string, m: GardenMode) {
     Row() {
+      Stack() {
+        SymbolGlyph(this.iconOf(m))
+          .fontSize(18)
+          .fontColor([this.mode === m ? Theme.BRAND_DEEP : '#7F9183'])
+      }
+      .width(30)
+      .height(30)
+      .borderRadius(10)
+      .backgroundColor(this.mode === m ? 'rgba(151,255,171,0.24)' : '#F2F6F1')
+
       Text(title)
         .fontSize(15)
         .fontWeight(this.mode === m ? FontWeight.Medium : FontWeight.Normal)
         .fontColor(this.mode === m ? Theme.BRAND_DEEP : Theme.PRIMARY)
+        .margin({ left: 10 })
         .layoutWeight(1)
       if (this.mode === m) {
         SymbolGlyph($r('sys.symbol.checkmark')).fontSize(16).fontColor([Theme.BRAND_DEEP])
@@ -51,6 +62,15 @@ export struct ModeMenu {
       this.onSelect(m);
     })
     .clickEffect({ level: ClickEffectLevel.LIGHT, scale: 0.97 })
+  }
+
+  private iconOf(m: GardenMode): Resource {
+    if (m === GardenMode.OUTLINE) {
+      return $r('sys.symbol.star');
+    } else if (m === GardenMode.TREE) {
+      return $r('sys.symbol.leaf');
+    }
+    return $r('sys.symbol.leaf');
   }
 
   build() {
@@ -73,11 +93,11 @@ export struct ModeMenu {
           this.menuRow('记忆树', GardenMode.TREE)
         }
         .width(172)
-        .borderRadius(18)
-        .backgroundColor('rgba(252,254,251,0.97)')
+        .borderRadius(20)
+        .backgroundColor('rgba(249,253,247,0.97)')
         .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
-        .border({ width: 1, color: 'rgba(255,255,255,0.85)' })
-        .shadow({ radius: 26, color: 'rgba(26,48,32,0.18)', offsetY: 6 })
+        .border({ width: 1, color: 'rgba(255,255,255,0.92)' })
+        .shadow({ radius: 28, color: 'rgba(26,48,32,0.16)', offsetY: 8 })
         .padding({ top: 6, bottom: 6 })
         .margin({ top: this.statusH + 62, right: 14 })
         .zIndex(10)

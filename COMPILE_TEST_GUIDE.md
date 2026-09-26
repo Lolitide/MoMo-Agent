@@ -206,7 +206,7 @@ hdc list targets
 hdc install entry/build/default/outputs/default/entry-default-signed.hap
 
 # 启动应用
-hdc shell aa start -a EntryAbility -b com.agent.momo
+hdc shell aa start -a EntryAbility -b com.example.momo
 ```
 
 ### 3. 查看日志

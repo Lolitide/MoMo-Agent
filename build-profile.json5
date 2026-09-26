@@ -1,9 +1,26 @@
 {
   "app": {
-    "signingConfigs": [],
+    // 调试签名使用项目相对路径；密码由 DevEco Studio 加密保存。
+    // Provisioning Profile 与应用和调试设备绑定，并由 .gitignore 保留在本机。
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "sign/momo_debug.p12",
+          "storePassword": "0000001686F659E4BB778D581D508764622C57C46525DC004BE080AF561A6C524CB74A3593A8",
+          "keyAlias": "momo",
+          "keyPassword": "000000162425E81373D4748362C08C8EA6D2DB38F7102BD96C91CBEEBFD9FF7F4CB4DC27C447",
+          "signAlg": "SHA256withECDSA",
+          "profile": "sign/momo_debug.p7b",
+          "certpath": "sign/momo_debug.cer"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
+        "signingConfig": "default",
         "targetSdkVersion": "6.0.2(22)",
         "compatibleSdkVersion": "6.0.2(22)",
         "runtimeOS": "HarmonyOS",

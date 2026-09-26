@@ -11,14 +11,14 @@
  * ============================================================================
  */
 import { Logger } from '../../utils/Logger';
-import cloudFunction from '@hms.core.cloudFunction';
+import { cloudFunction } from '@kit.CloudFoundationKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { ComicStylePayload } from '../ai/ComicPromptBuilder';
 
 export class CloudFunctionService {
   private static readonly TAG = 'CloudFunctionService';
   private static instance: CloudFunctionService | null = null;
 
-  private functionClient?: cloudFunction.FunctionClient;
   private isInitialized: boolean = false;
 
   // 云函数名称
@@ -50,9 +50,6 @@ export class CloudFunctionService {
     try {
       Logger.info(CloudFunctionService.TAG, '初始化云函数...');
 
-      // 获取FunctionClient实例
-      this.functionClient = cloudFunction.getFunctionClient();
-
       this.isInitialized = true;
       Logger.info(CloudFunctionService.TAG, '云函数初始化成功');
     } catch (err) {
@@ -66,7 +63,7 @@ export class CloudFunctionService {
    * 确保已初始化
    */
   private ensureInitialized(): void {
-    if (!this.isInitialized || !this.functionClient) {
+    if (!this.isInitialized) {
       throw new Error('云函数未初始化，请先调用initialize()');
     }
   }
@@ -74,34 +71,29 @@ export class CloudFunctionService {
   /**
    * 调用云函数
    */
-  private async callFunction(functionName: string, params: Record<string, Object>): Promise<CloudFunctionResponse> {
+  private async callFunction(functionName: string, data: Object): Promise<string> {
     this.ensureInitialized();
 
     try {
       Logger.info(CloudFunctionService.TAG, `调用云函数: ${functionName}`);
 
-      const request: cloudFunction.FunctionRequest = {
-        functionName: functionName,
-        parameters: params,
+      const request: cloudFunction.FunctionParams = {
+        name: functionName,
+        data: data,
         timeout: 60000 // 60秒超时
       };
 
-      const result = await this.functionClient!.call(request);
+      const result = await cloudFunction.call(request);
 
-      Logger.info(CloudFunctionService.TAG, `云函数返回: ${JSON.stringify(result).substring(0, 100)}`);
-
-      return {
-        success: result.code === 0,
-        data: result.result,
-        error: result.code !== 0 ? result.message : undefined
-      };
+      Logger.info(CloudFunctionService.TAG, `云函数 ${functionName} 已返回`);
+      if (typeof result.result === 'string') {
+        return result.result;
+      }
+      return JSON.stringify(result.result);
     } catch (err) {
       const error = err as BusinessError;
       Logger.error(CloudFunctionService.TAG, `调用失败: ${error.message}`);
-      return {
-        success: false,
-        error: error.message
-      };
+      return Promise.reject(new Error(`云函数调用失败: ${error.message}`));
     }
   }
 
@@ -111,68 +103,57 @@ export class CloudFunctionService {
    * 生成每日总结
    */
   async generateDailySummary(request: LLMRequest): Promise<LLMResponse> {
-    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_SUMMARY, {
+    const params: SummaryFunctionParams = {
       userId: request.userId,
-      events: request.events,
+      events: request.events || [],
       mood: request.mood || '平静'
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || '生成总结失败');
-    }
-
-    return response.data as LLMResponse;
+    };
+    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_SUMMARY, params);
+    return this.requireLLMSuccess(JSON.parse(response) as LLMResponse);
   }
 
   /**
    * 生成漫画脚本
    */
   async generateComicScript(request: LLMRequest): Promise<ComicScriptResponse> {
-    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_COMIC_SCRIPT, {
+    const params: ComicScriptFunctionParams = {
       userId: request.userId,
-      summary: request.summary,
-      events: request.events
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || '生成漫画脚本失败');
+      summary: request.summary || '',
+      events: request.events || [],
+      style: request.style
+    };
+    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_COMIC_SCRIPT, params);
+    const result = JSON.parse(response) as ComicScriptResponse;
+    if (result.success !== true || !result.panels || result.panels.length === 0) {
+      throw new Error(result.error?.message || '漫画脚本生成失败');
     }
-
-    return response.data as ComicScriptResponse;
+    return result;
   }
 
   /**
    * 处理记忆纠正
    */
   async processMemoryCorrection(request: MemoryCorrectionRequest): Promise<LLMResponse> {
-    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_CORRECTION, {
+    const params: CorrectionFunctionParams = {
       userId: request.userId,
       originalSummary: request.originalSummary,
       userCorrection: request.userCorrection
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || '处理纠正失败');
-    }
-
-    return response.data as LLMResponse;
+    };
+    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_CORRECTION, params);
+    return this.requireLLMSuccess(JSON.parse(response) as LLMResponse);
   }
 
   /**
    * 通用对话
    */
   async chat(request: ChatRequest): Promise<LLMResponse> {
-    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_CHAT, {
+    const params: ChatFunctionParams = {
       userId: request.userId,
       message: request.message,
       context: request.context || []
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || '对话失败');
-    }
-
-    return response.data as LLMResponse;
+    };
+    const response = await this.callFunction(CloudFunctionService.FUNCTION_LLM_CHAT, params);
+    return this.requireLLMSuccess(JSON.parse(response) as LLMResponse);
   }
 
   // ==================== 文生图服务 ====================
@@ -181,33 +162,41 @@ export class CloudFunctionService {
    * 生成图片（异步）
    */
   async generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResponse> {
-    const response = await this.callFunction(CloudFunctionService.FUNCTION_IMAGE_GENERATE, {
+    const params: ImageFunctionParams = {
       userId: request.userId,
       prompt: request.prompt,
       style: request.style || 'anime',
-      size: request.size || '1024x1024'
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || '生成图片失败');
+      size: request.size || '1024x1024',
+      useCharacterReference: request.useCharacterReference === true
+    };
+    const response = await this.callFunction(CloudFunctionService.FUNCTION_IMAGE_GENERATE, params);
+    const result = JSON.parse(response) as ImageGenerationResponse;
+    if (result.success !== true || result.status !== 'success' || !result.imageUrl) {
+      throw new Error(result.error || '图片生成失败');
     }
-
-    return response.data as ImageGenerationResponse;
+    return result;
   }
 
   /**
    * 查询图片生成状态
    */
   async getImageStatus(taskId: string): Promise<ImageStatusResponse> {
-    const response = await this.callFunction(CloudFunctionService.FUNCTION_IMAGE_STATUS, {
+    const params: ImageStatusFunctionParams = {
       taskId: taskId
-    });
-
-    if (!response.success) {
-      throw new Error(response.error || '查询状态失败');
+    };
+    const response = await this.callFunction(CloudFunctionService.FUNCTION_IMAGE_STATUS, params);
+    const result = JSON.parse(response) as ImageStatusResponse;
+    if (result.success !== true && result.status === 'failed') {
+      throw new Error(result.error || '图片状态查询失败');
     }
+    return result;
+  }
 
-    return response.data as ImageStatusResponse;
+  private requireLLMSuccess(result: LLMResponse): LLMResponse {
+    if (result.success !== true || !result.content) {
+      throw new Error(result.error?.message || '云函数未返回有效内容');
+    }
+    return result;
   }
 
   /**
@@ -221,7 +210,8 @@ export class CloudFunctionService {
         userId: userId,
         prompt: panel.prompt,
         style: 'comic',
-        size: '1024x1024'
+        size: '1024x1024',
+        useCharacterReference: true  // 默认启用角色参考
       };
 
       tasks.push(this.generateImage(request));
@@ -266,13 +256,41 @@ export class CloudFunctionService {
 
 // ==================== 接口定义 ====================
 
-/**
- * 云函数响应基类
- */
-interface CloudFunctionResponse {
-  success: boolean;
-  data?: any;
-  error?: string;
+interface SummaryFunctionParams {
+  userId: string;
+  events: string[];
+  mood: string;
+}
+
+interface ComicScriptFunctionParams {
+  userId: string;
+  summary: string;
+  events: string[];
+  style?: ComicStylePayload;
+}
+
+interface CorrectionFunctionParams {
+  userId: string;
+  originalSummary: string;
+  userCorrection: string;
+}
+
+interface ChatFunctionParams {
+  userId: string;
+  message: string;
+  context: ChatMessage[];
+}
+
+interface ImageFunctionParams {
+  userId: string;
+  prompt: string;
+  style: string;
+  size: string;
+  useCharacterReference: boolean;
+}
+
+interface ImageStatusFunctionParams {
+  taskId: string;
 }
 
 /**
@@ -283,26 +301,39 @@ export interface LLMRequest {
   events?: string[];
   mood?: string;
   summary?: string;
+  style?: ComicStylePayload;
 }
 
 /**
  * LLM响应
  */
 export interface LLMResponse {
+  success: boolean;
   content: string;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+  usage?: TokenUsage;
+  error?: FunctionErrorInfo;
+}
+
+export interface FunctionErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 }
 
 /**
  * 漫画脚本响应
  */
 export interface ComicScriptResponse {
+  success: boolean;
   panels: ComicPanel[];
   theme: string;
+  error?: FunctionErrorInfo;
 }
 
 /**
@@ -349,12 +380,14 @@ export interface ImageGenerationRequest {
   prompt: string;
   style?: string;
   size?: string;
+  useCharacterReference?: boolean;
 }
 
 /**
  * 图片生成响应
  */
 export interface ImageGenerationResponse {
+  success: boolean;
   taskId: string;
   status: 'pending' | 'generating' | 'success' | 'failed';
   imageUrl?: string;
@@ -365,6 +398,7 @@ export interface ImageGenerationResponse {
  * 图片状态响应
  */
 export interface ImageStatusResponse {
+  success: boolean;
   taskId: string;
   status: 'pending' | 'generating' | 'success' | 'failed';
   progress?: number;
