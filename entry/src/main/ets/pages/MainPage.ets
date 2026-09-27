@@ -8,12 +8,12 @@
  *       + 二级页（今日状态 / 今日漫画 / 关于默默，经 pagesMap 路由）
  *   - 提供沉浸式标题栏（滚动渐变模糊）+ 系统菜单按钮（首页：换状态/去花园/关于；
  *     花园：搜索/更多），以及底部悬浮导航栏与“分离的加号(miniBar)”。
- *   - 全局“记一笔”浮窗（GlassSheet，挂载即显示）与对应回调（写入 Mock 记忆仓库）。
+ *   - 全局“记一笔”浮窗（GlassSheet）与对应回调（写入 MemoryRepository）。
  * 【前置条件 / 假设】
- *   - 依赖：AppRouter(NavPathStack 路由栈)、各 Repository/Mock 数据已就绪、
+ *   - 依赖：AppRouter(NavPathStack 路由栈)、各 Repository 数据已就绪、
  *     Services 中 TabController/HomeController/GardenController/ShellState 为静态控制器；
  *   - 运行环境：HarmonyOS NEXT，SDK API 22+（HDS 为 6.1.0(23) 特性，低版本会降级警告）；
- *   - 假设用户昵称可由 UserRepository 读取（Mock 数据），HDS 运行时可用。
+ *   - 假设用户昵称可由 UserRepository 读取，HDS 运行时可用。
  * 【输入 / 输出（后置条件）】
  *   - 输入：启动参数 want.parameters.autoNav（如 "B_TodayMemory"/"garden-tree"/"add"，
  *     仅开发调试用）；用户点击（Tab、菜单、加号、卡片）；
@@ -35,8 +35,8 @@ import { HdsNavigation, HdsNavigationTitleMode, HdsTabs, HdsTabsController, hdsM
 import { LengthMetrics } from '@kit.ArkUI';
 import { AppRouter, RouteName } from '../router/AppRouter';
 import { GardenController, CompanionService, TabController, HomeController, ShellState } from '../service/Services';
-import { UserRepository, MemoryRepository } from '../repository/Repositories';
-import { Memory, MemoryType, MoMoState, GardenMode } from '../model/Models';
+import { UserRepository, MemoryRepository, EventRepository, ComicRepository } from '../repository/Repositories';
+import { Memory, MemoryType, MoMoState, GardenMode, CheckInGuideStep, CheckInGuideState } from '../model/Models';
 import { AddSheetContent } from '../components/Sheets';
 import { PromptUtil } from '../utils/PromptUtil';
 import { Theme } from '../utils/Theme';
@@ -49,6 +49,7 @@ import { B_DailyComic } from './B_DailyComic';
 import { B_About } from './B_About';
 import { B_Search } from './B_Search';
 import { B_ComicViewer } from './B_ComicViewer';
+import { OnboardingService } from '../service/OnboardingService';
 
 @Entry
 @Component
@@ -56,7 +57,14 @@ struct MainPage {
 
   @State tab: number = 0;
   @State addOpen: boolean = false;
-  @State userName: string = '酪酪肽';
+  @State userName: string = 'MoMo';
+  @State showGuide: boolean = false;
+  @State guideStep: CheckInGuideStep = CheckInGuideStep.PROFILE_REQUIRED;
+  @State guideError: string = '';
+  @State guideWorking: boolean = false;
+  private guideUserId: string = '';
+  private lastCheckInText: string = '';
+  private hasAppendedCheckIn: boolean = false;
   // 响应式花园模式（AppStorage 驱动，菜单随模式实时刷新）
   @StorageLink('gardenMode') gardenMode: number = 0;
   private tabsCtrl: HdsTabsController = new HdsTabsController();
@@ -64,8 +72,15 @@ struct MainPage {
 
   // 生命周期：初始化昵称/问候语、绑定 TabController/HomeController 桥、消费调试参数 autoNav（页面跳转或切 Tab）
   aboutToAppear(): void {
-    this.userName = UserRepository.get().getUser().name;
-    this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
+    UserRepository.get().load().then((user) => {
+      this.userName = user.name;
+      this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
+      this.loadGuideState();
+    }).catch(() => {
+      this.userName = UserRepository.get().getUser().name;
+      this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
+      this.loadGuideState();
+    });
     TabController.switch = (index: number) => {
       this.tabsCtrl.changeIndex(index);
     };
@@ -101,6 +116,32 @@ struct MainPage {
     }
   }
 
+  private async loadGuideState(): Promise<void> {
+    this.guideUserId = await OnboardingService.get().getCurrentUserId();
+    const state = await OnboardingService.get().loadGuide(this.guideUserId);
+    this.guideStep = state.currentStep;
+    if (this.guideStep === CheckInGuideStep.PROFILE_REQUIRED && UserRepository.get().getUser().profileCompleted) {
+      this.guideStep = CheckInGuideStep.CHECKIN_READY;
+      await this.setGuideStep(CheckInGuideStep.CHECKIN_READY);
+    }
+    this.lastCheckInText = await OnboardingService.get().loadPendingCheckIn(this.guideUserId);
+    // 首页首次引导只在档案完成后的准备态显示一次；记录后的流程不再占用首页空间。
+    this.showGuide = this.guideStep === CheckInGuideStep.CHECKIN_READY;
+    if ((this.guideStep === CheckInGuideStep.CHECKIN_INPUT || this.guideStep === CheckInGuideStep.SUMMARY_READY) &&
+      this.lastCheckInText) {
+      this.generateCheckInResult(this.lastCheckInText, !this.hasAppendedCheckIn);
+      this.hasAppendedCheckIn = true;
+    }
+  }
+
+  private async setGuideStep(step: CheckInGuideStep): Promise<void> {
+    this.guideStep = step;
+    const state = new CheckInGuideState();
+    state.currentStep = step;
+    state.completedAt = step === CheckInGuideStep.COMPLETED ? Date.now() : 0;
+    await OnboardingService.get().saveGuide(this.guideUserId, state);
+  }
+
   // 打开“记一笔”浮窗：花园 Tab 先收起详情；首页同时把默默切到倾听态（LISTENING）
   private openAdd(): void {
     if (this.tab === 1) {
@@ -109,7 +150,14 @@ struct MainPage {
     if (this.tab === 0) {
       CompanionService.get().setState(MoMoState.LISTENING);
     }
+    // 点击“+”即视为完成首次引导，提示立即消失并进入记录面板。
+    if (this.showGuide) {
+      this.showGuide = false;
+    }
     this.addOpen = true;
+    if (this.guideStep === CheckInGuideStep.CHECKIN_READY) {
+      this.setGuideStep(CheckInGuideStep.CHECKIN_INPUT);
+    }
   }
 
   private closeAdd(): void {
@@ -121,16 +169,57 @@ struct MainPage {
 
   private onAddDone(text: string): void {
     const snapshot = text.length > 18 ? text.slice(0, 18) + '…' : text;
-    if (this.tab === 1) {
-      const m = new Memory('m-' + Date.now().toString(), snapshot, new Date(), MemoryType.LIFE, 2);
-      m.summary = text;
-      m.tags = ['新记忆', '口述'];
-      MemoryRepository.get().add(m);
-      PromptUtil.toast('默默把这条记忆种进了花园');
-    } else {
-      PromptUtil.toast('默默已记下（Mock），快去花园看看吧');
-    }
+    const m = new Memory('m-' + Date.now().toString(), snapshot, new Date(), MemoryType.LIFE, 2);
+    m.summary = text;
+    m.content = text;
+    m.tags = ['新记忆', '口述'];
+    MemoryRepository.get().add(m);
     this.closeAdd();
+    this.lastCheckInText = text;
+    this.hasAppendedCheckIn = true;
+    OnboardingService.get().savePendingCheckIn(this.guideUserId, text);
+    this.generateCheckInResult(text);
+  }
+
+  private async generateCheckInResult(text: string, append: boolean = true): Promise<void> {
+    this.guideError = '';
+    this.guideWorking = true;
+    try {
+      const daily = append ? await EventRepository.get().appendCheckIn(text) : await EventRepository.get().getToday();
+      await this.setGuideStep(CheckInGuideStep.SUMMARY_READY);
+      const profile = UserRepository.get().getUser().profile;
+      const summary = await EventRepository.get().generateDailySummary(daily.events, profile.tone);
+      const comic = await ComicRepository.get().generateTodayComic(summary, daily.events, profile);
+      if (!comic || comic.pages.length === 0) {
+        throw new Error('漫画没有返回可展示的图片');
+      }
+      await this.setGuideStep(CheckInGuideStep.COMIC_READY);
+      await OnboardingService.get().clearPendingCheckIn(this.guideUserId);
+      PromptUtil.toast('今天的总结和漫画已经准备好了');
+    } catch (err) {
+      this.guideError = '云端生成没有完成，请检查网络后重试';
+      PromptUtil.toast(this.guideError);
+    } finally {
+      this.guideWorking = false;
+    }
+  }
+
+  private retryCheckIn(): void {
+    if (this.lastCheckInText) {
+      this.generateCheckInResult(this.lastCheckInText, !this.hasAppendedCheckIn);
+      this.hasAppendedCheckIn = true;
+    }
+  }
+
+  private openGuideComic(): void {
+    this.setGuideStep(CheckInGuideStep.GARDEN_SEEDED);
+    AppRouter.push(RouteName.DAILY_COMIC);
+  }
+
+  private openGuideGarden(): void {
+    this.showGuide = false;
+    this.setGuideStep(CheckInGuideStep.COMPLETED);
+    TabController.switch(1);
   }
 
   private currentTitle(): string {
@@ -171,7 +260,7 @@ struct MainPage {
           { content: { label: '搜索记忆', icon: $r('sys.symbol.magnifyingglass'), isEnabled: true, action: () => { GardenController.openSearch(); } } },
           { content: { label: '花园模式', icon: $r('sys.symbol.house'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.GARDEN); } } },
           { content: { label: '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } },
-          { content: { label: '记忆树', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.TREE); } } }
+          { content: { label: '记忆树', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.TREE); } } },
         ]
       };
     }
@@ -211,7 +300,7 @@ struct MainPage {
   tabBuilder(index: number) {
     Column() {
       SymbolGlyph(this.tabIcon(index))
-        .fontSize(24)
+        .fontSize(Theme.fontSize(24))
         .fontColor([this.tab === index ? '#97FFAB' : '#9A9B94'])
     }
     .width('100%')
@@ -232,8 +321,32 @@ struct MainPage {
   @Builder
   miniBarBuilder() {
     Stack() {
+      if (this.showGuide && this.tab === 0) {
+        Column({ space: 4 }) {
+          Text('点击“+”，和默默说一句今天的事')
+            .fontSize(Theme.fontSize(12))
+            .fontColor(Theme.PRIMARY)
+            .textAlign(TextAlign.Center)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          SymbolGlyph($r('sys.symbol.chevron_down'))
+            .fontSize(Theme.fontSize(14))
+            .fontColor([Theme.BRAND_DEEP])
+        }
+        .width(190)
+        .position({ x: -67, y: -76 })
+        .hitTestBehavior(HitTestMode.Transparent)
+
+        Column()
+          .width(68)
+          .height(68)
+          .borderRadius(34)
+          .border({ width: 2, color: Theme.BRAND_DEEP })
+          .shadow({ radius: 12, color: '#5533C56E', offsetX: 0, offsetY: 0 })
+          .hitTestBehavior(HitTestMode.Transparent)
+      }
       SymbolGlyph($r('sys.symbol.plus'))
-        .fontSize(24)
+        .fontSize(Theme.fontSize(24))
         .fontColor(['#6FDF8E'])
     }
     .width(56)
@@ -250,7 +363,7 @@ struct MainPage {
   }
 
   build() {
-    Column() {
+    Stack({ alignContent: Alignment.Bottom }) {
       HdsNavigation(AppRouter.stack) {
         HdsTabs({ controller: this.tabsCtrl }) {
           TabContent() {
@@ -285,12 +398,16 @@ struct MainPage {
           },
           miniBar: {
             miniBarBuilder: (): void => this.miniBarBuilder(),
-            enableMiniBarClip: true
+            enableMiniBarClip: false
           }
         })
         .animationDuration(0)
         .onChange((index: number) => {
           this.tab = index;
+          if (index === 1 && this.guideStep === CheckInGuideStep.GARDEN_SEEDED) {
+            this.showGuide = false;
+            this.setGuideStep(CheckInGuideStep.COMPLETED);
+          }
           if (index === 0) {
             CompanionService.get().setState(MoMoState.IDLE);
           } else {

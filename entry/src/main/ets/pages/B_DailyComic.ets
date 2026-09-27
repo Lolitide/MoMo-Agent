@@ -6,11 +6,11 @@
  *   漫画标题 + Swiper 漫画翻页（1.22 展示比例）+ 指示点 + 默默寄语；
  *   点击进入全屏看图（捏合缩放/拖拽/双击），底部固定栏（纠正/日期/反馈）。
  * 【前置条件 / 假设】
- *   - 依赖：HdsNavDestination、ComicRepository.getToday()（Mock 图集 comic_1..5）、
- *     DayBottomBar、Sheets、StateViews；loadFailed 可模拟失败态；
+ *   - 依赖：HdsNavDestination、ComicRepository.getGeneratedToday()、
+ *     DayBottomBar、Sheets、StateViews；
  *   - 假设：全屏查看层为自定义覆盖层（非系统一个窗口），极简手势交互。
  * 【输入 / 输出（后置条件）】
- *   - 输入：Swiper 滑动、点击图片、捏合/拖拽/双击、菜单（重新生成/模拟失败/关于）、
+ *   - 输入：Swiper 滑动、点击图片、捏合/拖拽/双击、菜单（生成/关于）、
  *     纠正/反馈提交、返回；
  *   - 输出：current 页码、viewerOpen/viewerScale/viewerTx/Ty 手势状态、
  *     pageState（LOADING/ERROR/SUCCESS）。
@@ -18,14 +18,15 @@
  *   - GestureGroup(Exclusive) 组合 PinchGesture/PanGesture/TapGesture 实现看板手势；
  *   - resetViewer：animateTo 回弹复位（scale=1, 位移清零）。
  * 【参考源】
- *   - Examples/ArkUISample（Swiper/手势）；MoMo_DOC/占位图片（漫画占位素材）
+ *   - Examples/ArkUISample（Swiper/手势）；MoMo_DOC/UI 参考
  * ============================================================================
  */
 import { HdsNavDestination, ScrollEffectType } from '@kit.UIDesignKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import { AppRouter, RouteName } from '../router/AppRouter';
-import { ComicRepository } from '../repository/Repositories';
+import { ComicRepository, UserRepository } from '../repository/Repositories';
 import { Comic, ComicPage, PageState, MoMoState } from '../model/Models';
+import { EventRepository } from '../repository/Repositories';
 import { Theme } from '../utils/Theme';
 import { PromptUtil } from '../utils/PromptUtil';
 import { DayBottomBar } from '../components/DayBottomBar';
@@ -49,6 +50,7 @@ export struct B_DailyComic {
   private pinchStart: number = 1;
   private panStartX: number = 0;
   private panStartY: number = 0;
+  @State isGenerating: boolean = false;
 
   aboutToAppear(): void {
     setTimeout(() => {
@@ -56,13 +58,13 @@ export struct B_DailyComic {
     }, 400);
   }
 
-  // 加载今日漫画：先检查“模拟失败”标志（菜单可触发），成功则取图集并复位页码
+  // 只展示已由云端生成的漫画；尚未生成时不把示例图片当作真实结果。
   private load(): void {
     if (ComicRepository.get().loadFailed) {
       this.pageState = PageState.ERROR;
       return;
     }
-    this.comic = ComicRepository.get().getToday();
+    this.comic = ComicRepository.get().getGeneratedToday() || new Comic();
     this.current = 0;
     this.pageState = PageState.SUCCESS;
   }
@@ -72,6 +74,33 @@ export struct B_DailyComic {
     setTimeout(() => {
       this.load();
     }, 500);
+  }
+
+  private async generateRealComic(): Promise<void> {
+    if (this.isGenerating) {
+      return;
+    }
+    this.isGenerating = true;
+    this.pageState = PageState.LOADING;
+    try {
+      const daily = await EventRepository.get().getToday();
+      if (!daily.summary) {
+        this.pageState = PageState.SUCCESS;
+        PromptUtil.toast('请先到今日状态生成云端总结');
+        return;
+      }
+      const comic = await ComicRepository.get().generateTodayComic(daily.summary, daily.events, UserRepository.get().getUser().profile);
+      this.comic = comic;
+      this.current = 0;
+      this.pageState = PageState.SUCCESS;
+      PromptUtil.toast('真实云端漫画已生成');
+    } catch (err) {
+      const error = err as Error;
+      this.pageState = PageState.ERROR;
+      PromptUtil.toast(`云端生成失败：${error.message}`);
+    } finally {
+      this.isGenerating = false;
+    }
   }
 
 
@@ -170,17 +199,43 @@ export struct B_DailyComic {
   }
 
   @Builder
+  emptyBody() {
+    Column({ space: 18 }) {
+      MoMoAvatar({ avatarSize: 150, state: MoMoState.THINKING })
+      Text('今天的云端漫画尚未生成')
+        .fontSize(Theme.fontSize(16))
+        .fontColor(Theme.PRIMARY)
+      Text('先生成今日总结，再让默默把它画出来')
+        .fontSize(Theme.fontSize(13))
+        .fontColor(Theme.SECONDARY)
+      Button('生成云端漫画')
+        .fontSize(Theme.fontSize(14))
+        .fontColor('#FFFFFF')
+        .backgroundColor(Theme.BRAND_DEEP)
+        .height(42)
+        .borderRadius(21)
+        .onClick(() => { this.generateRealComic(); })
+      Button('前往今日状态')
+        .fontSize(Theme.fontSize(13))
+        .onClick(() => { AppRouter.push(RouteName.TODAY_MEMORY); })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+  }
+
+  @Builder
   errorBody() {
     Column({ space: 18 }) {
       MoMoAvatar({ avatarSize: 150, state: MoMoState.THINKING })
-      Text('默默还在画，请稍后再试')
-        .fontSize(15)
+      Text('云端漫画生成失败，请检查服务配置或网络')
+        .fontSize(Theme.fontSize(15))
         .fontColor(Theme.SECONDARY)
-      Text('（这是 Mock 错误状态演示，可在右上角菜单恢复）')
-        .fontSize(11)
+      Text('可从右上角菜单重新生成')
+        .fontSize(Theme.fontSize(11))
         .fontColor(Theme.TERTIARY)
       Button('重新加载')
-        .fontSize(14)
+        .fontSize(Theme.fontSize(14))
         .fontColor('#FFFFFF')
         .backgroundColor(Theme.BRAND_DEEP)
         .height(40)
@@ -204,29 +259,37 @@ export struct B_DailyComic {
           LoadingState({ text: '默默正在绘制今天的漫画……' })
         } else if (this.pageState === PageState.ERROR) {
           this.errorBody()
+        } else if (this.comic.pages.length === 0) {
+          this.emptyBody()
         } else {
           Scroll(this.scroller) {
             Column({ space: 12 }) {
               Blank().height(100)
               Text('今日一页')
-                .fontSize(12)
+                .fontSize(Theme.fontSize(12))
                 .fontColor(Theme.TERTIARY)
                 .width('100%')
               Text(this.comic.title)
-                .fontSize(17)
+                .fontSize(Theme.fontSize(17))
                 .fontWeight(FontWeight.Bold)
                 .fontColor(Theme.PRIMARY)
                 .width('100%')
+              if (this.comic.styleKey) {
+                Text('今日风格：' + this.comic.styleKey.split('|')[0])
+                  .fontSize(Theme.fontSize(12))
+                  .fontColor(Theme.BRAND_DEEP)
+                  .width('100%')
+              }
               this.comicSwiper()
               this.dots()
               Column({ space: 8 }) {
                 Text('默默寄语')
-                  .fontSize(15)
+                  .fontSize(Theme.fontSize(15))
                   .fontWeight(FontWeight.Medium)
                   .fontColor(Theme.PRIMARY)
                   .width('100%')
                 Text(this.comic.message)
-                  .fontSize(14)
+                  .fontSize(Theme.fontSize(14))
                   .fontColor(Theme.SECONDARY)
                   .lineHeight(22)
                   .width('100%')
@@ -259,7 +322,7 @@ export struct B_DailyComic {
                 this.openFeedback();
               },
               onDate: () => {
-                PromptUtil.toast('今日漫画仅支持查看当天（Mock）');
+                PromptUtil.toast('今日漫画仅支持查看当天');
               }
             })
           }
@@ -322,8 +385,7 @@ export struct B_DailyComic {
         },
         menu: {
           value: [
-            { content: { label: '重新生成', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: true, action: () => { PromptUtil.toast('已重新生成（Mock），此次画面与上次一致'); } } },
-            { content: { label: '模拟失败', icon: $r('sys.symbol.xmark_circle'), isEnabled: true, action: () => { ComicRepository.get().loadFailed = true; this.pageState = PageState.ERROR; } } },
+            { content: { label: '生成云端漫画', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: !this.isGenerating, action: () => { this.generateRealComic(); } } },
             { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
           ]
         }

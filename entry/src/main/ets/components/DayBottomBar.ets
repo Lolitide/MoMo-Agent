@@ -38,10 +38,10 @@ export struct DayBottomBar {
       Row() {
         Row({ space: 6 }) {
           SymbolGlyph($r('sys.symbol.pencil_line'))
-            .fontSize(16)
+            .fontSize(Theme.fontSize(16))
             .fontColor([Theme.TEXT_MAIN])
           Text('纠正')
-            .fontSize(15)
+            .fontSize(Theme.fontSize(15))
             .fontColor(Theme.TEXT_MAIN)
             .fontWeight(FontWeight.Medium)
         }
@@ -56,11 +56,11 @@ export struct DayBottomBar {
 
         Column() {
           Text(DateUtil.dayOfMonth(this.date).toString())
-            .fontSize(18)
+            .fontSize(Theme.fontSize(18))
             .fontColor(Theme.TEXT_MAIN)
             .fontWeight(FontWeight.Bold)
           Text(DateUtil.weekday(this.date))
-            .fontSize(10)
+            .fontSize(Theme.fontSize(10))
             .fontColor(Theme.TEXT_SUB)
         }
         .width(54)
@@ -77,10 +77,10 @@ export struct DayBottomBar {
 
         Row({ space: 6 }) {
           SymbolGlyph($r('sys.symbol.star_fill'))
-            .fontSize(16)
+            .fontSize(Theme.fontSize(16))
             .fontColor([Theme.WARM])
           Text('反馈')
-            .fontSize(15)
+            .fontSize(Theme.fontSize(15))
             .fontColor(Theme.TEXT_MAIN)
             .fontWeight(FontWeight.Medium)
         }

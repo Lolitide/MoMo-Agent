@@ -12,3 +12,26 @@
 /.appanalyzer
 /_shots
 /.codegenie
+
+# AI配置文件（包含API Key，不要提交到Git）
+entry/src/main/resources/rawfile/ai_config.json
+
+# 本机签名材料、私钥、证书和 Profile（严禁提交）
+sign/
+entry/signatures/*.p12
+entry/signatures/*.p7b
+entry/signatures/*.cer
+entry/signatures/*.csr
+entry/signatures/*.json
+
+# 云函数个人角色配置；仓库只保留模板
+cloud-functions/character-config.json
+
+# 本机缓存、系统文件和打包产物
+.DS_Store
+Users/
+*.zip
+cloud-functions/*.zip
+
+# 与开发证书和调试设备绑定的本机 Provisioning Profile
+*.p7b

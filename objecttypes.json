@@ -1,0 +1,240 @@
+{
+  "permissions": [
+    {
+      "permissions": [
+        {
+          "role": "World",
+          "rights": []
+        },
+        {
+          "role": "Authenticated",
+          "rights": []
+        },
+        {
+          "role": "Creator",
+          "rights": ["Read", "Upsert", "Delete"]
+        },
+        {
+          "role": "Administrator",
+          "rights": ["Read", "Upsert", "Delete"]
+        }
+      ],
+      "objectTypeName": "UserProfile"
+    },
+    {
+      "permissions": [
+        {
+          "role": "World",
+          "rights": []
+        },
+        {
+          "role": "Authenticated",
+          "rights": []
+        },
+        {
+          "role": "Creator",
+          "rights": ["Read", "Upsert", "Delete"]
+        },
+        {
+          "role": "Administrator",
+          "rights": ["Read", "Upsert", "Delete"]
+        }
+      ],
+      "objectTypeName": "DailyRecord"
+    },
+    {
+      "permissions": [
+        {
+          "role": "World",
+          "rights": []
+        },
+        {
+          "role": "Authenticated",
+          "rights": []
+        },
+        {
+          "role": "Creator",
+          "rights": ["Read", "Upsert", "Delete"]
+        },
+        {
+          "role": "Administrator",
+          "rights": ["Read", "Upsert", "Delete"]
+        }
+      ],
+      "objectTypeName": "ComicImage"
+    },
+    {
+      "permissions": [
+        {
+          "role": "World",
+          "rights": []
+        },
+        {
+          "role": "Authenticated",
+          "rights": []
+        },
+        {
+          "role": "Creator",
+          "rights": ["Read", "Upsert", "Delete"]
+        },
+        {
+          "role": "Administrator",
+          "rights": ["Read", "Upsert", "Delete"]
+        }
+      ],
+      "objectTypeName": "UserFeedback"
+    },
+    {
+      "permissions": [
+        {
+          "role": "World",
+          "rights": []
+        },
+        {
+          "role": "Authenticated",
+          "rights": []
+        },
+        {
+          "role": "Creator",
+          "rights": ["Read", "Upsert", "Delete"]
+        },
+        {
+          "role": "Administrator",
+          "rights": ["Read", "Upsert", "Delete"]
+        }
+      ],
+      "objectTypeName": "LongTermMemory"
+    }
+  ],
+  "objectTypes": [
+    {
+      "indexes": [
+        {
+          "indexName": "idx_userprofile_updatedAt",
+          "indexList": ["updatedAt"]
+        }
+      ],
+      "objectTypeName": "UserProfile",
+      "fields": [
+        { "fieldName": "userId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": true, "fieldType": "String" },
+        { "fieldName": "username", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "avatar", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "email", "notNull": false, "isNeedEncrypt": true, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "phone", "notNull": false, "isNeedEncrypt": true, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "createdAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" },
+        { "fieldName": "updatedAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" },
+        { "fieldName": "llmQuotaDaily", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer" },
+        { "fieldName": "llmQuotaUsed", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer" },
+        { "fieldName": "imageQuotaDaily", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer" },
+        { "fieldName": "imageQuotaUsed", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer" },
+        { "fieldName": "lastQuotaReset", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" }
+      ]
+    },
+    {
+      "indexes": [
+        {
+          "indexName": "idx_dailyrecord_user_date",
+          "indexList": ["userId", "date"]
+        },
+        {
+          "indexName": "idx_dailyrecord_updatedAt",
+          "indexList": ["updatedAt"]
+        }
+      ],
+      "objectTypeName": "DailyRecord",
+      "fields": [
+        { "fieldName": "recordId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": true, "fieldType": "String" },
+        { "fieldName": "userId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "date", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "mood", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "events", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "summary", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "comicScript", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "comicImages", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "createdAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" },
+        { "fieldName": "updatedAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" }
+      ]
+    },
+    {
+      "indexes": [
+        {
+          "indexName": "idx_comicimage_record_panel",
+          "indexList": ["recordId", "panelIndex"]
+        },
+        {
+          "indexName": "idx_comicimage_user",
+          "indexList": ["userId"]
+        }
+      ],
+      "objectTypeName": "ComicImage",
+      "fields": [
+        { "fieldName": "imageId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": true, "fieldType": "String" },
+        { "fieldName": "userId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "recordId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "panelIndex", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer", "defaultValue": 0 },
+        { "fieldName": "prompt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "imageUrl", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "localPath", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "status", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "taskId", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "createdAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" },
+        { "fieldName": "completedAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" }
+      ]
+    },
+    {
+      "indexes": [
+        {
+          "indexName": "idx_feedback_user_createdAt",
+          "indexList": ["userId", "createdAt"]
+        },
+        {
+          "indexName": "idx_feedback_status",
+          "indexList": ["status"]
+        }
+      ],
+      "objectTypeName": "UserFeedback",
+      "fields": [
+        { "fieldName": "feedbackId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": true, "fieldType": "String" },
+        { "fieldName": "userId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "type", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "content", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text", "defaultValue": "" },
+        { "fieldName": "contact", "notNull": false, "isNeedEncrypt": true, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "status", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String" },
+        { "fieldName": "createdAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" }
+      ]
+    },
+    {
+      "indexes": [
+        {
+          "indexName": "idx_longtermemory_user_date",
+          "indexList": ["userId", "dateTimestamp"]
+        },
+        {
+          "indexName": "idx_longtermemory_type",
+          "indexList": ["type"]
+        },
+        {
+          "indexName": "idx_longtermemory_updatedAt",
+          "indexList": ["updatedAt"]
+        }
+      ],
+      "objectTypeName": "LongTermMemory",
+      "fields": [
+        { "fieldName": "memoryId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": true, "fieldType": "String" },
+        { "fieldName": "userId", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "title", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "date", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "String", "defaultValue": "" },
+        { "fieldName": "dateTimestamp", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long", "defaultValue": 0 },
+        { "fieldName": "summary", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "content", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "type", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer", "defaultValue": 0 },
+        { "fieldName": "importance", "notNull": true, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Integer", "defaultValue": 1 },
+        { "fieldName": "tags", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "sourceEvents", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "relatedMemoryIds", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Text" },
+        { "fieldName": "createdAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" },
+        { "fieldName": "updatedAt", "notNull": false, "isNeedEncrypt": false, "belongPrimaryKey": false, "fieldType": "Long" }
+      ]
+    }
+  ]
+}

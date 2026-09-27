@@ -64,18 +64,18 @@ export struct B_Search {
     Row({ space: 10 }) {
       Column({ space: 4 }) {
         Text(m.title)
-          .fontSize(14)
+          .fontSize(Theme.fontSize(14))
           .fontWeight(FontWeight.Medium)
           .fontColor(Theme.PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(m.date + ' · ' + MemoryTypeUtil.nameOf(m.type))
-          .fontSize(11)
+          .fontSize(Theme.fontSize(11))
           .fontColor(Theme.TERTIARY)
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(14).fontColor([Theme.TERTIARY])
+      SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(Theme.fontSize(14)).fontColor([Theme.TERTIARY])
     }
     .width('100%')
     .height(64)
@@ -100,7 +100,7 @@ export struct B_Search {
               placeholder: '翻翻我的记忆本…',
               text: this.keyword
             })
-              .fontSize(15)
+              .fontSize(Theme.fontSize(15))
               .height(46)
               .borderRadius(23)
               .backgroundColor('#FFFFFF')
@@ -113,10 +113,10 @@ export struct B_Search {
 
             Column() {
               Row({ space: 5 }) {
-                SymbolGlyph($r('sys.symbol.arrow_down_right_and_arrow_up_left')).fontSize(14)
+                SymbolGlyph($r('sys.symbol.arrow_down_right_and_arrow_up_left')).fontSize(Theme.fontSize(14))
                   .fontColor([this.filterIdx === 0 ? '#3E6B4B' : '#FFFFFF'])
                 Text(FILTERS[this.filterIdx])
-                  .fontSize(13)
+                  .fontSize(Theme.fontSize(13))
                   .fontWeight(FontWeight.Medium)
                   .fontColor(this.filterIdx === 0 ? '#3E6B4B' : '#FFFFFF')
               }
@@ -147,12 +147,12 @@ export struct B_Search {
           Column() {
             if (this.results().length === 0) {
               Column({ space: 10 }) {
-                SymbolGlyph($r('sys.symbol.hourglass')).fontSize(34).fontColor([Theme.TERTIARY])
+                SymbolGlyph($r('sys.symbol.hourglass')).fontSize(Theme.fontSize(34)).fontColor([Theme.TERTIARY])
                 Text(EMPTY_HINT)
-                  .fontSize(14)
+                  .fontSize(Theme.fontSize(14))
                   .fontColor(Theme.SECONDARY)
                 Text('换个关键词或筛选方式试试吧')
-                  .fontSize(11)
+                  .fontSize(Theme.fontSize(11))
                   .fontColor(Theme.TERTIARY)
               }
               .width('100%')

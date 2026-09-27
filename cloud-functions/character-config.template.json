@@ -1,0 +1,22 @@
+{
+  "character": {
+    "name": "默默",
+    "appearance": "你的主人公外观描述（英文）- 例如: young girl with short brown hair, green eyes, wearing a cozy cream-colored sweater",
+    "traits": [
+      "性格特征1",
+      "性格特征2",
+      "性格特征3"
+    ],
+    "styleKeywords": "绘图风格关键词（英文）- 例如: soft lighting, warm atmosphere, gentle expression, cozy indoor scene",
+    "referenceImageUrl": "场景/画风参考图 HTTPS URL（可选）",
+    "protagonistImageUrl": "主角形象参考图 HTTPS URL（可选）",
+    "referenceImageFile": "assets/scene-reference.png（云函数内置素材路径）",
+    "protagonistImageFile": "assets/protagonist.png（云函数内置素材路径）"
+  },
+  "visualStyle": {
+    "artStyle": "画风描述 - 例如: modern anime illustration, soft watercolor style",
+    "colorPalette": "色调描述 - 例如: warm earth tones, soft pastels",
+    "mood": "氛围描述 - 例如: cozy, heartwarming, peaceful",
+    "composition": "构图偏好 - 例如: close-up emotional moments, medium shots, natural poses"
+  }
+}

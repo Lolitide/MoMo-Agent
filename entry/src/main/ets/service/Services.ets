@@ -113,9 +113,6 @@ export class ShellState {
 
 export class SettingsService {
   private static instance: SettingsService | null = null;
-  darkMode: boolean = false;
-  largeFont: boolean = false;
-  themeColor: string = '#97FFAB';
   readCalendar: boolean = true;
   readTodo: boolean = true;
   readMemo: boolean = false;
@@ -128,4 +125,5 @@ export class SettingsService {
     }
     return SettingsService.instance;
   }
+
 }

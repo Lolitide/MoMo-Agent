@@ -17,7 +17,6 @@
  * ============================================================================
  */
 import { Memory, MemoryType, MemoryTypeUtil } from '../model/Models';
-import { Theme } from '../utils/Theme';
 
 @Component
 export struct GardenNodeMarker {
@@ -39,41 +38,67 @@ export struct GardenNodeMarker {
   }
 
   build() {
-    Column({ space: 4 }) {
+    Column({ space: 5 }) {
       Stack() {
         if (this.selected) {
-          Column().width(66).height(66).borderRadius(999).backgroundColor('rgba(151,255,171,0.45)')
-            .border({ width: 2, color: Theme.BRAND_DEEP })
+          Column().width(82).height(82).borderRadius(999).backgroundColor(MemoryTypeUtil.colorOf(this.memory.type) + '28')
+            .border({ width: 2, color: MemoryTypeUtil.colorOf(this.memory.type) })
         }
-        Column().width(56).height(56).borderRadius(999).backgroundColor('#FFFFFF')
-          .shadow({ radius: 10, color: 'rgba(47,76,53,0.16)', offsetY: 3 })
-        SymbolGlyph(this.iconOf(this.memory.type))
-          .fontSize(26)
-          .fontColor([MemoryTypeUtil.colorOf(this.memory.type), MemoryTypeUtil.colorOf(this.memory.type)])
-        // importance dots
-        Column({ space: 2 }) {
+        Stack() {
+          Column()
+            .width(62)
+            .height(62)
+            .borderRadius(999)
+            .backgroundColor('#FCFFFA')
+            .border({ width: 1, color: 'rgba(255,255,255,0.95)' })
+            .shadow({ radius: 14, color: 'rgba(47,76,53,0.18)', offsetY: 4 })
+          SymbolGlyph(this.iconOf(this.memory.type))
+            .fontSize(29)
+            .fontColor([MemoryTypeUtil.colorOf(this.memory.type), MemoryTypeUtil.colorOf(this.memory.type)])
+        }
+        .width(64)
+        .height(64)
+
+        // Importance is shown as a small crown of dots above the flower.
+        Row({ space: 3 }) {
           ForEach([1, 2, 3, 4, 5], (n: number) => {
-            Row()
-              .width(4).height(4).borderRadius(2)
-              .backgroundColor(n <= this.memory.importance ? MemoryTypeUtil.colorOf(this.memory.type) : '#E3EAE4')
+            Column()
+              .width(n <= this.memory.importance ? 6 : 4)
+              .height(n <= this.memory.importance ? 6 : 4)
+              .borderRadius(4)
+              .backgroundColor(n <= this.memory.importance
+                ? MemoryTypeUtil.colorOf(this.memory.type) : '#DCE7DD')
           }, (n: number) => n.toString())
         }
-        .position({ x: 58, y: 34 })
+        .position({ x: 28, y: 2 })
       }
-      .width(70)
-      .height(70)
+      .width(88)
+      .height(82)
 
       Text(this.memory.date)
-        .fontSize(9)
-        .fontColor(Theme.SECONDARY)
-        .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-        .backgroundColor('rgba(255,255,255,0.88)')
-        .borderRadius(8)
+        .fontSize(10)
+        .fontColor('#4F6755')
+        .fontWeight(FontWeight.Medium)
+        .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+        .backgroundColor('rgba(250,255,249,0.88)')
+        .borderRadius(10)
+        .border({ width: 1, color: 'rgba(255,255,255,0.88)' })
+
+      Text(this.memory.title)
+        .fontSize(11)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#29402F')
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width(108)
+        .textAlign(TextAlign.Center)
     }
+    .width(110)
+    .alignItems(HorizontalAlign.Center)
     .onClick(() => {
       this.onTap(this.memory);
     })
-    .scale(this.selected ? { x: 1.1, y: 1.1 } : { x: 1, y: 1 })
+    .scale(this.selected ? { x: 1.06, y: 1.06 } : { x: 1, y: 1 })
     .animation({ duration: 180, curve: Curve.EaseOut })
   }
 }

@@ -5,7 +5,7 @@
  * 【用途】一级 Tab「首页」：打招呼话语 + 默默软体角色（MoMoAvatar，随滚动缩放）
  *   + 「今日状态」卡片（时间线摘要 + 跳转）+ 「今日漫画」卡片（横滑封面 + 跳转）。
  * 【前置条件 / 假设】
- *   - 依赖：EventRepository.getToday() / ComicRepository.getToday() 提供 Mock 数据；
+ *   - 依赖：EventRepository.getToday() / ComicRepository.getGeneratedToday()；
  *     CompanionService 提供默默状态与订阅（StateListener）；ShellState.homeScroller
  *     与 HDS 标题栏滚动效果绑定；
  *   - 假设：首页不再自带标题栏（由 MainPage 的 HDS 标题栏承担）；
@@ -26,7 +26,6 @@ import { CompanionService, StateListener, ShellState } from '../service/Services
 import { EventRepository, ComicRepository } from '../repository/Repositories';
 import { EventItem, MoMoState } from '../model/Models';
 import { Theme } from '../utils/Theme';
-import { PromptUtil } from '../utils/PromptUtil';
 import { MoMoAvatar } from '../components/MoMoAvatar';
 
 @Component
@@ -36,18 +35,26 @@ export struct A_Home {
   @State heroH: number = 340;
   @State avSize: number = 300;
   @State events: EventItem[] = [];
-  @State comicImages: Resource[] = [];
+  @State comicImages: ResourceStr[] = [];
   private scroller: Scroller = ShellState.homeScroller;
   private onStateChange: StateListener = () => {
   };
 
   aboutToAppear(): void {
-    const daily = EventRepository.get().getToday();
-    this.events = daily.events;
-    const comic = ComicRepository.get().getToday();
-    const imgs: Resource[] = [];
-    for (let i = 0; i < comic.pages.length; i++) {
-      imgs.push(comic.pages[i].image);
+    // 异步加载今日事件（支持系统数据）
+    EventRepository.get().getToday().then((daily) => {
+      this.events = daily.events;
+    }).catch((err: Error) => {
+      console.error(`加载今日事件失败: ${err.message}`);
+      this.events = [];
+    });
+
+    const comic = ComicRepository.get().getGeneratedToday();
+    const imgs: ResourceStr[] = [];
+    if (comic) {
+      for (let i = 0; i < comic.pages.length; i++) {
+        imgs.push(comic.pages[i].image);
+      }
     }
     this.comicImages = imgs;
     this.momoState = CompanionService.get().getState();
@@ -73,7 +80,7 @@ export struct A_Home {
     Column({ space: 12 }) {
       Row() {
         Text('今日状态')
-          .fontSize(17)
+          .fontSize(Theme.fontSize(17))
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.PRIMARY)
           .layoutWeight(1)
@@ -93,11 +100,11 @@ export struct A_Home {
                     .borderRadius(3)
                     .backgroundColor('#8CCCA0')
                   Text(ev.time)
-                    .fontSize(11)
+                    .fontSize(Theme.fontSize(11))
                     .fontColor(Theme.TERTIARY)
                     .width(38)
                   Text(ev.title)
-                    .fontSize(13)
+                    .fontSize(Theme.fontSize(13))
                     .fontColor(Theme.SECONDARY)
                     .layoutWeight(1)
                     .maxLines(1)
@@ -119,13 +126,12 @@ export struct A_Home {
         Column() {
           Stack() {
             Column().width(20).height(100)
-            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(40).fontColor(['#B261D77E'])
+            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(Theme.fontSize(40)).fontColor(['#B261D77E'])
           }
         }
         .width(20)
         .height(100)
         .onClick(() => {
-          PromptUtil.toast('打开今日状态');
           AppRouter.push(RouteName.TODAY_MEMORY);
         })
       }
@@ -144,7 +150,7 @@ export struct A_Home {
     Column({ space: 12 }) {
       Row() {
         Text('今日漫画')
-          .fontSize(17)
+          .fontSize(Theme.fontSize(17))
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.PRIMARY)
           .layoutWeight(1)
@@ -153,32 +159,39 @@ export struct A_Home {
       .padding({ left: 4 })
 
       Row({ space: 10 }) {
-        Scroll() {
-          Row({ space: 10 }) {
-            ForEach(this.comicImages, (img: Resource, index: number) => {
-              Column() {
-                Image(img)
-                  .width(116)
-                  .height(150)
-                  .borderRadius(18)
-                  .objectFit(ImageFit.Cover)
-                Text((index + 1).toString())
-                  .fontSize(9)
-                  .fontColor(Theme.TERTIARY)
-                  .margin({ top: 3 })
-              }
-            }, (img: Resource) => img.toString())
+        if (this.comicImages.length === 0) {
+          Text('云端漫画尚未生成，点击右侧进入')
+            .fontSize(Theme.fontSize(13))
+            .fontColor(Theme.SECONDARY)
+            .layoutWeight(1)
+        } else {
+          Scroll() {
+            Row({ space: 10 }) {
+              ForEach(this.comicImages, (img: ResourceStr, index: number) => {
+                Column() {
+                  Image(img)
+                    .width(116)
+                    .height(150)
+                    .borderRadius(18)
+                    .objectFit(ImageFit.Cover)
+                  Text((index + 1).toString())
+                    .fontSize(Theme.fontSize(9))
+                    .fontColor(Theme.TERTIARY)
+                    .margin({ top: 3 })
+                }
+              }, (img: ResourceStr) => img.toString())
+            }
           }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring)
+          .layoutWeight(1)
         }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring)
-        .layoutWeight(1)
 
         Column() {
           Stack() {
             Column().width(20).height(100)
-            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(40).fontColor(['#B261D77E'])
+            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(Theme.fontSize(40)).fontColor(['#B261D77E'])
           }
         }
         .width(20)

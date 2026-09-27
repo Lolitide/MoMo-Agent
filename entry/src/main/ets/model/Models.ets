@@ -60,8 +60,37 @@ export class CompanionState {
 }
 
 export class User {
-  name: string = '酪酪肽';
+  userId: string = '';
+  name: string = 'MoMo';
   signature: string = '今天也要好好生活呀';
+  avatar: string = '';
+  profile: PersonalityProfile = new PersonalityProfile();
+  profileCompleted: boolean = false;
+  profileVersion: number = 1;
+}
+
+export class PersonalityProfile {
+  tone: string = '温柔';
+  pace: string = '少打扰';
+  comicStyle: string = '清新日常';
+  focusTopics: string[] = ['生活'];
+  version: number = 1;
+}
+
+export enum CheckInGuideStep {
+  PROFILE_REQUIRED = 'PROFILE_REQUIRED',
+  CHECKIN_READY = 'CHECKIN_READY',
+  CHECKIN_INPUT = 'CHECKIN_INPUT',
+  SUMMARY_READY = 'SUMMARY_READY',
+  COMIC_READY = 'COMIC_READY',
+  GARDEN_SEEDED = 'GARDEN_SEEDED',
+  COMPLETED = 'COMPLETED'
+}
+
+export class CheckInGuideState {
+  guideVersion: number = 1;
+  currentStep: CheckInGuideStep = CheckInGuideStep.PROFILE_REQUIRED;
+  completedAt: number = 0;
 }
 
 export class EventItem {
@@ -70,6 +99,7 @@ export class EventItem {
   time: string = '';
   category: string = 'life';
   description: string = '';
+  content: string = '';
 
   constructor(id: string, title: string, time: string, category: string, description: string) {
     this.id = id;
@@ -77,6 +107,7 @@ export class EventItem {
     this.time = time;
     this.category = category;
     this.description = description;
+    this.content = description;
   }
 }
 
@@ -96,7 +127,7 @@ export class DailyMemory {
 export class ComicPage {
   index: number = 0;
   title: string = '';
-  image: Resource = $r('app.media.comic_1');
+  image: ResourceStr = $r('app.media.comic_1');
 }
 
 export class Comic {
@@ -105,6 +136,11 @@ export class Comic {
   title: string = '';
   message: string = '';
   pages: ComicPage[] = [];
+  profileVersion: number = 0;
+  styleKey: string = '';
+  sourceDate: string = '';
+  generationStatus: string = 'empty';
+  imageUrl: string = '';
 }
 
 export class Memory {

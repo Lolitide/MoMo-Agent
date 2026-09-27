@@ -2,15 +2,15 @@
  * ============================================================================
  * 文件名：pages/A_Settings.ets
  * ============================================================================
- * 【用途】一级 Tab「设置」：外观与个性化（主题色/深色模式/字体大小/低打扰）、
+ * 【用途】一级 Tab「设置」：偏好与低打扰、
  *   隐私与安全性（日历/待办/备忘录/相机权限开关）、记忆内容管理（清空/恢复示例）、
- *   关于入口（跳 B_About）。全部为 Mock 交互（Toast 反馈）。
+ *   关于入口（跳 B_About）；设置状态由 SettingsService 持久化。
  * 【前置条件 / 假设】
- *   - 依赖：SettingsService（本地 Mock 设置项）、SettingRows 组件、TabController、
+ *   - 依赖：SettingsService、SettingRows 组件、TabController、
  *     MemoryRepository（清空/恢复示例数据）、ShellState.settingsScroller；
- *   - 假设：本轮不申请真实权限，仅切换 UI 状态并 Toast。
+ *   - 假设：权限开关记录用户偏好，系统权限由对应能力接入时再申请。
  * 【输入 / 输出（后置条件）】
- *   - 输入：开关点击、主题色/字号选择、行点击、AlertDialog 确认；
+ *   - 输入：开关点击、行点击、AlertDialog 确认；
  *   - 输出：@State 同步 + 写入 SettingsService；清空/恢复数据仓库；跳转花园/关于。
  * 【关键类 / 算法】
  *   - A_Settings：设置页组件；clearAll：AlertDialog 二次确认后 MemoryRepository.clearAll()。
@@ -19,30 +19,25 @@
  * ============================================================================
  */
 import { AppRouter, RouteName } from '../router/AppRouter';
-import { MemoryRepository } from '../repository/Repositories';
+import router from '@ohos.router';
+import { MemoryRepository, UserRepository } from '../repository/Repositories';
 import { SettingsService, TabController, ShellState } from '../service/Services';
 import { Theme } from '../utils/Theme';
 import { PromptUtil } from '../utils/PromptUtil';
 import { SettingSwitchRow, SettingNavRow } from '../components/SettingRows';
+import { OnboardingService } from '../service/OnboardingService';
 
 @Component
 export struct A_Settings {
   private settings: SettingsService = SettingsService.get();
-  @State darkOn: boolean = false;
-  @State largeFont: boolean = false;
   @State readCal: boolean = true;
   @State readTodo: boolean = true;
   @State readMemo: boolean = false;
   @State camera: boolean = false;
   @State lowInterrupt: boolean = true;
-  @State themeIdx: number = 0;
   private scroller: Scroller = ShellState.settingsScroller;
-  private themeColors: string[] = ['#97FFAB', '#9AC8FF', '#FFC98A'];
-  private themeNames: string[] = ['默绿', '晴空', '暖阳'];
 
   aboutToAppear(): void {
-    this.darkOn = this.settings.darkMode;
-    this.largeFont = this.settings.largeFont;
     this.readCal = this.settings.readCalendar;
     this.readTodo = this.settings.readTodo;
     this.readMemo = this.settings.readMemo;
@@ -53,7 +48,7 @@ export struct A_Settings {
   private clearAll(): void {
     AlertDialog.show({
       title: '清除记忆数据',
-      message: '将清除花园、大纲、记忆树中的全部 Mock 记忆，此操作不可恢复。',
+      message: '将清除花园、大纲、记忆树中的全部记忆，此操作不可恢复。',
       autoCancel: true,
       alignment: DialogAlignment.Center,
       primaryButton: {
@@ -66,7 +61,7 @@ export struct A_Settings {
         fontColor: '#E5533D',
         action: () => {
           MemoryRepository.get().clearAll();
-          PromptUtil.toast('已清空记忆数据（Mock）');
+          PromptUtil.toast('已清空记忆数据');
         }
       }
     });
@@ -79,109 +74,15 @@ export struct A_Settings {
           // 顶部为 HDS 标题栏预留：单行(Mini)标题栏 56vp + 与内容间距（原为强调型 112vp 时的 170vp，同步减少 56vp）
           Blank().height(114)
 
-          // ============ 外观与个性化 ============
+          // ============ 偏好设置 ============
           Column({ space: 10 }) {
-            Text('外观与个性化')
-              .fontSize(14)
+            Text('偏好设置')
+              .fontSize(Theme.fontSize(14))
               .fontWeight(FontWeight.Medium)
               .fontColor(Theme.PRIMARY)
               .width('100%')
               .padding({ left: 4 })
             Column({ space: 0 }) {
-              Row({ space: 12 }) {
-                  SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(22).fontColor([Theme.BRAND_DEEP])
-                Column({ space: 2 }) {
-                  Text('主题色')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor(Theme.PRIMARY)
-                  Text('选择默默的主色调')
-                    .fontSize(11)
-                    .fontColor(Theme.TERTIARY)
-                }
-                .layoutWeight(1)
-                .alignItems(HorizontalAlign.Start)
-                Row({ space: 8 }) {
-                  ForEach(this.themeColors, (c: string, i: number) => {
-                    Column() {
-                      Stack() {
-                        Column().width(24).height(24).borderRadius(999).backgroundColor(c)
-                        if (this.themeIdx === i) {
-                          Column().width(24).height(24).borderRadius(999)
-                            .backgroundColor('rgba(0,0,0,0)')
-                            .border({ width: 2, color: Theme.PRIMARY })
-                          SymbolGlyph($r('sys.symbol.checkmark')).fontSize(12).fontColor(['#23402B'])
-                        }
-                      }
-                    }
-                    .width(24)
-                    .height(24)
-                    .onClick(() => {
-                      this.themeIdx = i;
-                      this.settings.themeColor = c;
-                      PromptUtil.toast('主题色已切换为「' + this.themeNames[i] + '」（Mock）');
-                    })
-                  }, (c: string) => c)
-                }
-              }
-              .width('100%')
-              .height(64)
-              .padding({ left: 18, right: 18 })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
-              SettingSwitchRow({
-                icon: $r('sys.symbol.moon_z'),
-                title: '深色模式',
-
-                isOn: this.darkOn,
-                onChange: (on: boolean) => {
-                  this.darkOn = on;
-                  this.settings.darkMode = on;
-                  PromptUtil.toast('深色模式状态已更新（Mock）');
-                }
-              })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
-              Row({ space: 12 }) {
-                  SymbolGlyph($r('sys.symbol.text_and_t')).fontSize(22).fontColor([Theme.BRAND_DEEP])
-                Column({ space: 2 }) {
-                  Text('字体大小')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor(Theme.PRIMARY)
-                  Text('标准 / 大一号')
-                    .fontSize(11)
-                    .fontColor(Theme.TERTIARY)
-                }
-                .layoutWeight(1)
-                .alignItems(HorizontalAlign.Start)
-                Row({ space: 6 }) {
-                  Text('标准')
-                    .fontSize(12)
-                    .fontColor(this.largeFont ? Theme.TERTIARY : '#FFFFFF')
-                    .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                    .borderRadius(13)
-                    .backgroundColor(this.largeFont ? '#EEF3EE' : Theme.BRAND_DEEP)
-                    .onClick(() => {
-                      this.largeFont = false;
-                      this.settings.largeFont = false;
-                      PromptUtil.toast('字号已切换为标准（Mock）');
-                    })
-                  Text('大')
-                    .fontSize(12)
-                    .fontColor(this.largeFont ? '#FFFFFF' : Theme.TERTIARY)
-                    .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                    .borderRadius(13)
-                    .backgroundColor(this.largeFont ? Theme.BRAND_DEEP : '#EEF3EE')
-                    .onClick(() => {
-                      this.largeFont = true;
-                      this.settings.largeFont = true;
-                      PromptUtil.toast('字号已切换为大（Mock）');
-                    })
-                }
-              }
-              .width('100%')
-              .height(64)
-              .padding({ left: 18, right: 18 })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingSwitchRow({
                 icon: $r('sys.symbol.leaf'),
                 title: '低打扰模式',
@@ -190,7 +91,7 @@ export struct A_Settings {
                 onChange: (on: boolean) => {
                   this.lowInterrupt = on;
                   this.settings.lowInterrupt = on;
-                  PromptUtil.toast('低打扰模式已' + (on ? '开启' : '关闭') + '（Mock）');
+                  PromptUtil.toast('低打扰模式已' + (on ? '开启' : '关闭'));
                 }
               })
             }
@@ -204,7 +105,7 @@ export struct A_Settings {
           // ============ 隐私与安全性 ============
           Column({ space: 10 }) {
             Text('隐私与安全性')
-              .fontSize(14)
+              .fontSize(Theme.fontSize(14))
               .fontWeight(FontWeight.Medium)
               .fontColor(Theme.PRIMARY)
               .width('100%')
@@ -218,10 +119,10 @@ export struct A_Settings {
                 onChange: (on: boolean) => {
                   this.readCal = on;
                   this.settings.readCalendar = on;
-                  PromptUtil.toast('日历权限已' + (on ? '开启' : '关闭') + '（Mock）');
+                  PromptUtil.toast('日历权限已' + (on ? '开启' : '关闭'));
                 },
                 onTap: () => {
-                  PromptUtil.toast('日历数据本轮为 Mock，不会真正读取');
+                  PromptUtil.toast('日历读取将在授权后启用');
                 }
               })
               Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
@@ -233,7 +134,7 @@ export struct A_Settings {
                 onChange: (on: boolean) => {
                   this.readTodo = on;
                   this.settings.readTodo = on;
-                  PromptUtil.toast('待办权限已' + (on ? '开启' : '关闭') + '（Mock）');
+                  PromptUtil.toast('待办权限已' + (on ? '开启' : '关闭'));
                 }
               })
               Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
@@ -245,7 +146,7 @@ export struct A_Settings {
                 onChange: (on: boolean) => {
                   this.readMemo = on;
                   this.settings.readMemo = on;
-                  PromptUtil.toast('备忘录权限已' + (on ? '开启' : '关闭') + '（Mock）');
+                  PromptUtil.toast('备忘录权限已' + (on ? '开启' : '关闭'));
                 }
               })
               Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
@@ -257,10 +158,10 @@ export struct A_Settings {
                 onChange: (on: boolean) => {
                   this.camera = on;
                   this.settings.cameraAccess = on;
-                  PromptUtil.toast('相机权限已' + (on ? '开启' : '关闭') + '（Mock）');
+                  PromptUtil.toast('相机权限已' + (on ? '开启' : '关闭'));
                 },
                 onTap: () => {
-                  PromptUtil.toast('相机数据本轮为 Mock，不会真正调用');
+                  PromptUtil.toast('相机功能将在授权后启用');
                 }
               })
             }
@@ -274,7 +175,7 @@ export struct A_Settings {
           // ============ 记忆内容管理 ============
           Column({ space: 10 }) {
             Text('记忆内容管理')
-              .fontSize(14)
+              .fontSize(Theme.fontSize(14))
               .fontWeight(FontWeight.Medium)
               .fontColor(Theme.PRIMARY)
               .width('100%')
@@ -290,32 +191,12 @@ export struct A_Settings {
               })
               Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingNavRow({
-                icon: $r('sys.symbol.picture'),
-                title: '存储占用',
-                desc: '已使用 32.4 MB / 500 MB',
-                trailing: '清理',
-                onTap: () => {
-                  PromptUtil.toast('已释放 1.2 MB（Mock）');
-                }
-              })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
-              SettingNavRow({
                 icon: $r('sys.symbol.ohos_trash'),
                 iconStyle: 'danger',
                 title: '清除记忆数据',
 
                 onTap: () => {
                   this.clearAll();
-                }
-              })
-              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
-              SettingNavRow({
-                icon: $r('sys.symbol.arrow_clockwise'),
-                title: '恢复示例数据',
-
-                onTap: () => {
-                  MemoryRepository.get().restoreSamples();
-                  PromptUtil.toast('已恢复示例数据');
                 }
               })
             }
@@ -329,7 +210,7 @@ export struct A_Settings {
           // ============ 关于 ============
           Column({ space: 10 }) {
             Text('关于')
-              .fontSize(14)
+              .fontSize(Theme.fontSize(14))
               .fontWeight(FontWeight.Medium)
               .fontColor(Theme.PRIMARY)
               .width('100%')
@@ -344,15 +225,41 @@ export struct A_Settings {
                 }
               })
               Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
+              SettingNavRow({
+                icon: $r('sys.symbol.star_fill'),
+                title: '陪伴档案',
+                desc: '调整语气、节奏和漫画风格',
+                onTap: () => {
+                  router.pushUrl({ url: 'pages/OnboardingProfilePage' });
+                }
+              })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
+              SettingNavRow({
+                icon: $r('sys.symbol.arrow_clockwise'),
+                title: '重新体验首次打卡',
+                desc: '退出登录，从登录和档案设置重新开始',
+                onTap: () => {
+                  OnboardingService.get().getCurrentUserId().then((userId) => {
+                    OnboardingService.get().restartFirstExperience(userId).then(() => {
+                      UserRepository.get().clearCachedProfile();
+                      PromptUtil.toast('已重置首次体验，即将返回登录');
+                      setTimeout(() => {
+                        router.pushUrl({ url: 'pages/LoginPage' });
+                      }, 350);
+                    });
+                  });
+                }
+              })
+              Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               Row({ space: 12 }) {
-                  SymbolGlyph($r('sys.symbol.star')).fontSize(22).fontColor([Theme.BRAND_DEEP])
+                  SymbolGlyph($r('sys.symbol.star')).fontSize(Theme.fontSize(22)).fontColor([Theme.BRAND_DEEP])
                 Column({ space: 2 }) {
                   Text('当前版本')
-                    .fontSize(16)
+                    .fontSize(Theme.fontSize(16))
                     .fontWeight(FontWeight.Medium)
                     .fontColor(Theme.PRIMARY)
-                  Text('MoMo 1.0.0 · 第一轮 Mock UI')
-                    .fontSize(11)
+                  Text('MoMo 2.0')
+                    .fontSize(Theme.fontSize(11))
                     .fontColor(Theme.TERTIARY)
                 }
                 .layoutWeight(1)

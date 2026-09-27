@@ -22,6 +22,9 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { AppRouter } from '../router/AppRouter';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { AIServiceCloud } from '../service/ai/AIServiceCloud';
+import { EventRepository } from '../repository/Repositories';
+import { DataSyncService } from '../service/DataSyncService';
 
 const DOMAIN = 0x0000;
 
@@ -37,6 +40,57 @@ export default class EntryAbility extends UIAbility {
       AppRouter.autoNav = '';
     }
     hilog.info(DOMAIN, 'MoMo', 'Ability onCreate autoNav=' + AppRouter.autoNav);
+
+    // 初始化数据同步服务（异步，不阻塞启动）
+    this.initializeDataSync();
+
+    // 初始化 AI 云服务（异步，不阻塞启动）
+    this.initializeAIService();
+
+    // 初始化系统数据服务（异步，不阻塞启动）
+    this.initializeSystemDataService();
+  }
+
+  /**
+   * 初始化数据同步服务
+   */
+  private initializeDataSync(): void {
+    DataSyncService.get().initialize(this.context)
+      .then(() => {
+        hilog.info(DOMAIN, 'MoMo', '数据同步服务初始化成功');
+      })
+      .catch((err: Error) => {
+        hilog.error(DOMAIN, 'MoMo', `数据同步服务初始化失败: ${err.message}`);
+        // 初始化失败不影响应用启动，降级到本地存储
+      });
+  }
+
+  /**
+   * 初始化 AI 云服务
+   */
+  private initializeAIService(): void {
+    AIServiceCloud.get().initialize(this.context)
+      .then(() => {
+        hilog.info(DOMAIN, 'MoMo', 'AI云服务初始化成功');
+      })
+      .catch((err: Error) => {
+        hilog.error(DOMAIN, 'MoMo', `AI云服务初始化失败: ${err.message}`);
+        // 初始化失败不影响应用启动，后续调用会降级到 Mock
+      });
+  }
+
+  /**
+   * 初始化系统数据服务
+   */
+  private initializeSystemDataService(): void {
+    EventRepository.get().initSystemData(this.context)
+      .then(() => {
+        hilog.info(DOMAIN, 'MoMo', '系统数据服务初始化成功');
+      })
+      .catch((err: Error) => {
+        hilog.error(DOMAIN, 'MoMo', `系统数据服务初始化失败: ${err.message}`);
+        // 初始化失败不影响应用启动，后续调用会降级到 Mock
+      });
   }
 
   onDestroy(): void {
@@ -44,7 +98,8 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    windowStage.loadContent('pages/MainPage', (err) => {
+    // 加载登录页面
+    windowStage.loadContent('pages/LoginPage', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, 'MoMo', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
         return;

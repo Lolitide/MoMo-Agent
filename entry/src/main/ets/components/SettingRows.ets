@@ -32,16 +32,16 @@ export struct SettingSwitchRow {
   build() {
     Row({ space: 12 }) {
       // 极简图标：无背景底
-      SymbolGlyph(this.icon).fontSize(22)
+      SymbolGlyph(this.icon).fontSize(Theme.fontSize(22))
         .fontColor([this.iconStyle === 'danger' ? Theme.DANGER : Theme.BRAND_DEEP])
       Column({ space: 2 }) {
         Text(this.title)
-          .fontSize(16)
+          .fontSize(Theme.fontSize(16))
           .fontWeight(FontWeight.Medium)
           .fontColor(Theme.PRIMARY)
         if (this.desc !== '') {
           Text(this.desc)
-            .fontSize(11)
+            .fontSize(Theme.fontSize(11))
             .fontColor(Theme.TERTIARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -76,16 +76,16 @@ export struct SettingNavRow {
   build() {
     Row({ space: 12 }) {
       // 极简图标：无背景底
-      SymbolGlyph(this.icon).fontSize(22)
+      SymbolGlyph(this.icon).fontSize(Theme.fontSize(22))
         .fontColor([this.iconStyle === 'danger' ? Theme.DANGER : Theme.BRAND_DEEP])
       Column({ space: 2 }) {
         Text(this.title)
-          .fontSize(16)
+          .fontSize(Theme.fontSize(16))
           .fontWeight(FontWeight.Medium)
           .fontColor(Theme.PRIMARY)
         if (this.desc !== '') {
           Text(this.desc)
-            .fontSize(11)
+            .fontSize(Theme.fontSize(11))
             .fontColor(Theme.TERTIARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -95,7 +95,7 @@ export struct SettingNavRow {
       .alignItems(HorizontalAlign.Start)
       if (this.trailing !== '') {
         Text(this.trailing)
-          .fontSize(12)
+          .fontSize(Theme.fontSize(12))
           .fontColor(Theme.BRAND_DEEP)
           .padding({ left: 12, right: 12, top: 6, bottom: 6 })
           .borderRadius(14)
@@ -104,7 +104,7 @@ export struct SettingNavRow {
             this.onTap();
           })
       } else {
-        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(16).fontColor([Theme.TERTIARY])
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(Theme.fontSize(16)).fontColor([Theme.TERTIARY])
       }
     }
     .width('100%')

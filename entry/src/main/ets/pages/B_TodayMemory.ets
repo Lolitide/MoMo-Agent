@@ -8,11 +8,10 @@
  * 【前置条件 / 假设】
  *   - 依赖：HdsNavDestination(系统返回+标题栏沉浸)、EventRepository.getToday()、
  *     EventTimeline/MiniCalendar/StateViews/Sheets 组件；
- *   - 假设：pageState 默认 LOADING，400ms 后 Mock 加载完成（先加载态后内容）；
+ *   - 假设：pageState 默认 LOADING，数据加载完成后进入内容或错误态；
  *     事件区高度吸附 0/190/380 三档。
  * 【输入 / 输出（后置条件）】
- *   - 输入：返回/菜单按钮（刷新/模拟失败/关于）、拖动事件区把手、日历选择、
- *     纠正/反馈提交；菜单“模拟失败”可复现错误态并支持重试；
+ *   - 输入：返回/菜单按钮（生成总结/关于）、拖动事件区把手、日历选择、纠正/反馈提交；
  *   - 输出：页面状态机（LOADING/SUCCESS/EMPTY/ERROR）、selectedDate 切换、
  *     浮窗开合（correctionOpen/feedbackOpen/calendarOpen）。
  * 【关键类 / 算法】
@@ -27,6 +26,7 @@ import { HdsNavDestination, ScrollEffectType } from '@kit.UIDesignKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import { AppRouter, RouteName } from '../router/AppRouter';
 import { EventRepository } from '../repository/Repositories';
+import { AIServiceCloud } from '../service/ai/AIServiceCloud';
 import { DailyMemory, InsightItem, PageState } from '../model/Models';
 import { DateUtil } from '../utils/DateUtil';
 import { Theme } from '../utils/Theme';
@@ -50,20 +50,74 @@ export struct B_TodayMemory {
   @State selectedDate: Date = new Date();
   private scroller: Scroller = new Scroller();
   private panBase: number = 290;
+  @State isGenerating: boolean = false;
 
   aboutToAppear(): void {
     setTimeout(() => {
-      this.daily = EventRepository.get().getToday();
-      this.pageState = PageState.SUCCESS;
+      EventRepository.get().getToday().then((daily) => {
+        this.daily = daily;
+        this.pageState = PageState.SUCCESS;
+      }).catch((err: Error) => {
+        console.error(`加载今日状态失败: ${err.message}`);
+        this.pageState = PageState.ERROR;
+      });
     }, 400);
   }
 
   private retry(): void {
     this.pageState = PageState.LOADING;
     setTimeout(() => {
-      this.daily = EventRepository.get().getToday();
-      this.pageState = PageState.SUCCESS;
+      EventRepository.get().getToday().then((daily) => {
+        this.daily = daily;
+        this.pageState = PageState.SUCCESS;
+      }).catch((err: Error) => {
+        console.error(`加载今日状态失败: ${err.message}`);
+        this.pageState = PageState.ERROR;
+      });
     }, 400);
+  }
+
+  private async generateRealSummary(): Promise<void> {
+    if (this.isGenerating) {
+      return;
+    }
+    this.isGenerating = true;
+    try {
+      const summary = await EventRepository.get().generateDailySummary(this.daily.events, '平静');
+      const updated = new DailyMemory();
+      updated.date = this.daily.date;
+      updated.events = this.daily.events;
+      updated.insights = this.daily.insights;
+      updated.summary = summary;
+      this.daily = updated;
+      PromptUtil.toast('真实云端总结已生成');
+    } catch (err) {
+      const error = err as Error;
+      PromptUtil.toast(`云端生成失败：${error.message}`);
+    } finally {
+      this.isGenerating = false;
+    }
+  }
+
+  private async applyRealCorrection(text: string): Promise<void> {
+    if (!this.daily.summary) {
+      PromptUtil.toast('请先生成云端总结');
+      return;
+    }
+    try {
+      const summary = await AIServiceCloud.get().processMemoryCorrection(this.daily.summary, text);
+      const updated = new DailyMemory();
+      updated.date = this.daily.date;
+      updated.events = this.daily.events;
+      updated.insights = this.daily.insights;
+      updated.summary = summary;
+      this.daily = updated;
+      EventRepository.get().updateTodaySummary(summary, updated.events);
+      PromptUtil.toast('真实云端纠正已完成');
+    } catch (err) {
+      const error = err as Error;
+      PromptUtil.toast(`云端纠正失败：${error.message}`);
+    }
   }
 
   // 事件区拖拽：起点记录基高，update 线性增减，end 就近吸附到 0/190/380 三档
@@ -123,7 +177,7 @@ export struct B_TodayMemory {
         },
         onApply: (text: string) => {
           this.sheetOpen = false;
-          PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」');
+          this.applyRealCorrection(text);
         }
       })
     } else if (this.sheetMode === 1) {
@@ -143,12 +197,12 @@ export struct B_TodayMemory {
   summaryBlock() {
     Column({ space: 8 }) {
       Text('今日总结')
-        .fontSize(15)
+        .fontSize(Theme.fontSize(15))
         .fontWeight(FontWeight.Medium)
         .fontColor(Theme.PRIMARY)
         .width('100%')
       Text(this.daily.summary)
-        .fontSize(14)
+        .fontSize(Theme.fontSize(14))
         .fontColor(Theme.SECONDARY)
         .lineHeight(23)
         .width('100%')
@@ -164,7 +218,7 @@ export struct B_TodayMemory {
   eventsBlock() {
     Column({ space: 6 }) {
       Text('今日事件')
-        .fontSize(15)
+        .fontSize(Theme.fontSize(15))
         .fontWeight(FontWeight.Medium)
         .fontColor(Theme.PRIMARY)
         .width('100%')
@@ -208,7 +262,7 @@ export struct B_TodayMemory {
           )
         // 操作引导：说明此处为“事件区域大小调整”把手
         Text('上下拖动调整事件区域大小')
-          .fontSize(10)
+          .fontSize(Theme.fontSize(10))
           .fontColor(Theme.TERTIARY)
           .opacity(0.85)
       }
@@ -223,7 +277,7 @@ export struct B_TodayMemory {
   insightsBlock() {
     Column({ space: 8 }) {
       Text('默默的理解')
-        .fontSize(15)
+        .fontSize(Theme.fontSize(15))
         .fontWeight(FontWeight.Medium)
         .fontColor(Theme.PRIMARY)
         .width('100%')
@@ -232,14 +286,14 @@ export struct B_TodayMemory {
         ForEach(this.daily.insights, (ins: InsightItem) => {
           Column({ space: 6 }) {
             Text(ins.title)
-              .fontSize(14)
+              .fontSize(Theme.fontSize(14))
               .fontWeight(FontWeight.Medium)
               .fontColor(Theme.PRIMARY)
               .width('100%')
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             Text(ins.content)
-              .fontSize(12)
+              .fontSize(Theme.fontSize(12))
               .fontColor(Theme.SECONDARY)
               .lineHeight(18)
               .width('100%')
@@ -330,7 +384,7 @@ export struct B_TodayMemory {
               onPick: (d: Date) => {
                 this.selectedDate = d;
                 this.calendarOpen = false;
-                PromptUtil.toast('已切换至 ' + DateUtil.formatDot(d) + '（Mock 数据）');
+                PromptUtil.toast('已切换至 ' + DateUtil.formatDot(d));
               },
               onClose: () => {
                 this.calendarOpen = false;
@@ -394,8 +448,7 @@ export struct B_TodayMemory {
         },
         menu: {
           value: [
-            { content: { label: '刷新', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: true, action: () => { PromptUtil.toast('已刷新（Mock 数据未变化）'); } } },
-            { content: { label: '模拟失败', icon: $r('sys.symbol.xmark_circle'), isEnabled: true, action: () => { this.pageState = PageState.ERROR; } } },
+            { content: { label: '生成云端总结', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: !this.isGenerating, action: () => { this.generateRealSummary(); } } },
             { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
           ]
         }

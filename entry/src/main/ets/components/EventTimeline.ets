@@ -59,7 +59,7 @@ export struct EventTimeline {
               Column().width(36).height(36).borderRadius(999).backgroundColor('#FFFFFF')
                 .shadow({ radius: 6, color: 'rgba(71,110,80,0.12)', offsetY: 1 })
               Column() {
-                SymbolGlyph(this.iconOf(ev.category)).fontSize(16).fontColor(['#4C9A62'])
+                SymbolGlyph(this.iconOf(ev.category)).fontSize(Theme.fontSize(16)).fontColor(['#4C9A62'])
               }
               .width(36)
               .height(36)
@@ -74,24 +74,24 @@ export struct EventTimeline {
 
           Column({ space: 3 }) {
             Row() {
-              Text(ev.time).fontSize(11).fontColor(Theme.TERTIARY)
+              Text(ev.time).fontSize(Theme.fontSize(11)).fontColor(Theme.TERTIARY)
                 .padding({ left: 8, right: 8, top: 2, bottom: 2 })
                 .backgroundColor('#F0F7F1')
                 .borderRadius(8)
               Blank()
               Text(ev.category === 'work' ? '工作' : (ev.category === 'interest' ? '兴趣' : '生活'))
-                .fontSize(10).fontColor(Theme.TERTIARY)
+                .fontSize(Theme.fontSize(10)).fontColor(Theme.TERTIARY)
             }
             .width('100%')
             Text(ev.title)
-              .fontSize(14)
+              .fontSize(Theme.fontSize(14))
               .fontWeight(FontWeight.Medium)
               .fontColor(Theme.PRIMARY)
               .width('100%')
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             Text(ev.description)
-              .fontSize(12)
+              .fontSize(Theme.fontSize(12))
               .fontColor(Theme.SECONDARY)
               .width('100%')
               .maxLines(1)

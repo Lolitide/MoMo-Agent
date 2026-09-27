@@ -1,0 +1,87 @@
+{
+  "name": "momo-cloud-functions",
+  "version": "1.1.0",
+  "description": "默默 Mo Mo 云函数集合",
+  "functions": [
+    {
+      "name": "llm-daily-summary",
+      "handler": "llm-daily-summary.handler",
+      "runtime": "nodejs18",
+      "memory": 512,
+      "timeout": 60,
+      "description": "生成每日总结",
+      "environmentVariables": [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TIMEOUT_MS"
+      ]
+    },
+    {
+      "name": "llm-chat",
+      "handler": "llm-chat.handler",
+      "runtime": "nodejs18",
+      "memory": 512,
+      "timeout": 60,
+      "description": "与默默进行上下文对话",
+      "environmentVariables": [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TIMEOUT_MS"
+      ]
+    },
+    {
+      "name": "llm-comic-script",
+      "handler": "llm-comic-script.handler",
+      "runtime": "nodejs18",
+      "memory": 512,
+      "timeout": 60,
+      "description": "生成漫画脚本",
+      "environmentVariables": [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TIMEOUT_MS"
+      ]
+    },
+    {
+      "name": "llm-memory-correction",
+      "handler": "llm-memory-correction.handler",
+      "runtime": "nodejs18",
+      "memory": 512,
+      "timeout": 60,
+      "description": "按用户纠正重写每日总结",
+      "environmentVariables": [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TIMEOUT_MS"
+      ]
+    },
+    {
+      "name": "image-generate",
+      "handler": "image-generate.handler",
+      "runtime": "nodejs18",
+      "memory": 1024,
+      "timeout": 120,
+      "description": "通过 Ark 同步生成图片",
+      "environmentVariables": [
+        "ARK_API_KEY",
+        "ARK_IMAGE_MODEL",
+        "ARK_IMAGE_URL_HOST_SUFFIXES",
+        "IMAGE_TASK_SECRET",
+        "ARK_IMAGE_TIMEOUT_MS",
+        "IMAGE_TASK_TTL_MS"
+      ]
+    },
+    {
+      "name": "image-get-status",
+      "handler": "image-get-status.handler",
+      "runtime": "nodejs18",
+      "memory": 256,
+      "timeout": 10,
+      "description": "解析图片生成完成回执",
+      "environmentVariables": [
+        "IMAGE_TASK_SECRET"
+      ]
+    }
+  ],
+  "dependencies": {}
+}
