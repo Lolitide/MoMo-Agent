@@ -27,6 +27,10 @@ import { AppRouter, RouteName } from '../router/AppRouter';
 import { ComicRepository, UserRepository } from '../repository/Repositories';
 import { Comic, ComicPage, PageState, MoMoState } from '../model/Models';
 import { EventRepository } from '../repository/Repositories';
+import { DemoAIGateway } from '../service/ai/DemoAIGateway';
+import { DemoModeService } from '../service/DemoModeService';
+import { DemoUIState } from '../service/Services';
+import { DemoMockData } from '../mock/DemoMockData';
 import { Theme } from '../utils/Theme';
 import { PromptUtil } from '../utils/PromptUtil';
 import { DayBottomBar } from '../components/DayBottomBar';
@@ -51,8 +55,11 @@ export struct B_DailyComic {
   private panStartX: number = 0;
   private panStartY: number = 0;
   @State isGenerating: boolean = false;
+  // 演示态：菜单标签与纠正文案随模式切换
+  @State isDemo: boolean = false;
 
   aboutToAppear(): void {
+    this.isDemo = DemoModeService.get().isDemo();
     setTimeout(() => {
       this.load();
     }, 400);
@@ -84,16 +91,21 @@ export struct B_DailyComic {
     this.pageState = PageState.LOADING;
     try {
       const daily = await EventRepository.get().getToday();
-      if (!daily.summary) {
+      // 演示态：总结由预制内容提供，不再要求用户先生成云端总结
+      if (!daily.summary && !this.isDemo) {
         this.pageState = PageState.SUCCESS;
         PromptUtil.toast('请先到今日状态生成云端总结');
         return;
       }
-      const comic = await ComicRepository.get().generateTodayComic(daily.summary, daily.events, UserRepository.get().getUser().profile);
+      const profile = UserRepository.get().getUser().profile;
+      const summary = daily.summary ? daily.summary : DemoMockData.demoDailySummaryText();
+      // 经网关分流：演示态秒回预制漫画；真实态走云端，失败降级为内置漫画（toast 由网关发出）
+      const comic = await DemoAIGateway.comic(summary, daily.events, profile);
+      ComicRepository.get().setGeneratedComic(comic);
       this.comic = comic;
       this.current = 0;
       this.pageState = PageState.SUCCESS;
-      PromptUtil.toast('真实云端漫画已生成');
+      PromptUtil.toast(this.isDemo ? '演示漫画已生成（演示数据）' : '真实云端漫画已生成');
     } catch (err) {
       const error = err as Error;
       this.pageState = PageState.ERROR;
@@ -127,13 +139,16 @@ export struct B_DailyComic {
   sheetBuilder() {
     if (this.sheetMode !== 1) {
       CorrectionSheetContent({
-        originalText: '默默把今天画成了一只下午打盹的小猫，因为你的专注时段之后有那么一点点疲惫。',
+        originalText: this.isDemo
+          ? DemoMockData.demoDailySummaryText()
+          : '默默把今天画成了一只下午打盹的小猫，因为你的专注时段之后有那么一点点疲惫。',
         onDismiss: () => {
           this.sheetOpen = false;
         },
         onApply: (text: string) => {
           this.sheetOpen = false;
-          PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」');
+          PromptUtil.toast('已提交纠正「' + (text.length > 14 ? text.slice(0, 14) + '…' : text) + '」'
+            + (this.isDemo ? '（演示数据）' : ''));
         }
       })
     } else if (this.sheetMode === 1) {
@@ -143,7 +158,9 @@ export struct B_DailyComic {
         },
         onSubmit: (score: number, msg: string) => {
           this.sheetOpen = false;
-          PromptUtil.toast('已收到 ' + score.toString() + ' 星反馈，默默记住啦');
+          PromptUtil.toast(this.isDemo
+            ? DemoAIGateway.feedbackAck(score)
+            : '已收到 ' + score.toString() + ' 星反馈，默默记住啦');
         }
       })
     }
@@ -385,7 +402,7 @@ export struct B_DailyComic {
         },
         menu: {
           value: [
-            { content: { label: '生成云端漫画', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: !this.isGenerating, action: () => { this.generateRealComic(); } } },
+            { content: { label: (this.isDemo ? DemoUIState.menuPrefix() : '') + '生成漫画', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: !this.isGenerating, action: () => { this.generateRealComic(); } } },
             { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
           ]
         }

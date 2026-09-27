@@ -5,7 +5,7 @@
  * 【用途】记忆树绘制组件：把 MemoryTreeNode 树结构按 TreeLayout 的布局结果绘制到 Canvas，
  *   支持节点圆点/连线/标签、点击选中（回调 onPick）与整体缩放(zoom)。
  * 【前置条件 / 假设】
- *   - 依赖：TreeLayout（布局算法工具）、MemoryTreeNode（模型）、GardenNodeMarker；
+ *   - 依赖：TreeLayout（布局算法工具）、MemoryTreeNode（模型）；
  *   - 假设：树深度有限（Mock 4-5 层），一次全量绘制；zoom 由外部传入（0.5~2.4）。
  * 【输入 / 输出（后置条件）】
  *   - 输入：nodes(树)、zoom(缩放)、selectedId(选中节点)；

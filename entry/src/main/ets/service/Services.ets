@@ -127,3 +127,24 @@ export class SettingsService {
   }
 
 }
+
+/**
+ * 演示模式的界面文案与只读状态查询（供页面复用，避免字符串散落在各页面）。
+ * 只读：不改变任何状态，真正的开关在 DemoModeService。
+ */
+export class DemoUIState {
+  /** 标题/菜单前缀：演示态下让评委一眼看出当前不是真实数据 */
+  static prefix(): string {
+    return '演示 · ';
+  }
+
+  /** 菜单项短前缀（菜单宽度有限，用更短的形式） */
+  static menuPrefix(): string {
+    return '演示·';
+  }
+
+  /** 演示态下「记一笔」等操作的说明后缀 */
+  static hintSuffix(): string {
+    return '（演示数据，退出后清除）';
+  }
+}

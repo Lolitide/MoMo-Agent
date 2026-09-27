@@ -70,7 +70,8 @@ export struct ModeMenu {
     } else if (m === GardenMode.TREE) {
       return $r('sys.symbol.leaf');
     }
-    return $r('sys.symbol.leaf');
+    // 气泡花园：用花代表「同类记忆聚成一朵花」的形态
+    return $r('sys.symbol.flower');
   }
 
   build() {
@@ -86,7 +87,7 @@ export struct ModeMenu {
           })
 
         Column() {
-          this.menuRow('花园模式', GardenMode.GARDEN)
+          this.menuRow('气泡花园', GardenMode.BUBBLE)
           Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 16, right: 16 })
           this.menuRow('大纲模式', GardenMode.OUTLINE)
           Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 16, right: 16 })

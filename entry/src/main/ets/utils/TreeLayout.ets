@@ -6,7 +6,7 @@
  *   （自顶向下 + 子树对齐），输出可绘制坐标供 MemoryTreeGraph 使用。
  * 【前置条件 / 假设】
  *   - 输入假设：树无环、节点含 children；坐标单位为 vp，原点在左上；
- *   - 依赖：MemoryTreeNode（模型）、GardenNodeMarker 尺寸常量（节点宽高/层级间距）。
+ *   - 依赖：MemoryTreeNode（模型）；
  * 【输入 / 输出（后置条件）】
  *   - 输入：root 节点、画布尺寸（可选最外层预算）；
  *   - 输出：Map<字符串节点key, {x,y}> 或节点列表携带 pos；纯函数无副作用。

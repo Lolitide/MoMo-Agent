@@ -11,7 +11,7 @@
  */
 import { Logger } from '../utils/Logger';
 import { MemoryRepository, EventRepository } from '../repository/Repositories';
-import { Memory, MemoryType } from '../model/Models';
+import { Memory, MemoryType, IMPORTANT_MEMORY_TAG, GOAL_IMPORTANT_IMPORTANCE } from '../model/Models';
 import { AuthService } from './auth/AuthService';
 import { CloudServiceManager } from './cloud/CloudServiceManager';
 import { LongTermMemory } from './cloud/CloudDBModels';
@@ -72,6 +72,9 @@ export class DataSyncService {
   private guestListener: (() => void) | null = null;
   private guestPersistPending: boolean = false;
   private guestPersistDirty: boolean = false;
+  // 演示模式开关：为 true 时彻底停止游客数据落盘（第二道保险；
+  // 第一道在 MemoryRepository 内部——演示态下 add/update/delete 根本不会触发 syncToCloud）。
+  private persistenceSuspended: boolean = false;
 
   private static readonly GUEST_PREFS = 'momo_guest_data_v1';
 
@@ -229,6 +232,10 @@ export class DataSyncService {
   }
 
   private scheduleGuestPersist(): void {
+    // 演示模式：演示数据只应留在内存里，绝不允许写入游客快照
+    if (this.persistenceSuspended || MemoryRepository.get().isDemo()) {
+      return;
+    }
     this.guestPersistDirty = true;
     if (this.guestPersistPending) {
       return;
@@ -238,11 +245,33 @@ export class DataSyncService {
     });
   }
 
+  /**
+   * 暂停游客数据落盘（由 DemoModeService 在进入演示模式时调用）。
+   * 只影响 persist 路径，不改变已加载的真实数据，也不触碰任何云同步状态。
+   */
+  suspendGuestPersistence(): void {
+    this.persistenceSuspended = true;
+    this.guestPersistDirty = false;
+    Logger.info(DataSyncService.TAG, '游客数据落盘已暂停（演示模式）');
+  }
+
+  /**
+   * 恢复游客数据落盘（由 DemoModeService 在退出演示模式时调用）
+   */
+  resumeGuestPersistence(): void {
+    this.persistenceSuspended = false;
+    Logger.info(DataSyncService.TAG, '游客数据落盘已恢复');
+  }
+
   private async persistGuestLoop(): Promise<void> {
     this.guestPersistPending = true;
     try {
       while (this.guestPersistDirty) {
         this.guestPersistDirty = false;
+        // 循环中途被暂停（进入演示模式）时立即退出，不做任何写入
+        if (this.persistenceSuspended || MemoryRepository.get().isDemo()) {
+          return;
+        }
         if (!this.localContext || !this.localUserId) {
           return;
         }
@@ -305,8 +334,8 @@ export class DataSyncService {
 
   private storedMemoryToMemory(stored: StoredGuestMemory): Memory {
     const memory = new Memory(stored.id, stored.title, new Date(stored.dateTimestamp),
-      stored.type as MemoryType, stored.importance);
-    memory.tags = stored.tags;
+      DataSyncService.migrateType(stored.type), stored.importance);
+    memory.tags = DataSyncService.migrateTags(stored.type, stored.tags);
     memory.summary = stored.summary;
     memory.content = stored.content;
     memory.sourceEvents = stored.sourceEvents;
@@ -314,14 +343,52 @@ export class DataSyncService {
     return memory;
   }
 
+  /**
+   * 类型迁移：「重要回忆」已从**类型**降级为**标签**（见 Models.ets）。
+   * 历史落盘数据里 type 仍是 IMPORTANT(4)，读回时必须归到目标类型，
+   * 否则这条记忆在气泡花园里会因为不属于任何一簇而消失。
+   */
+  private static migrateType(storedType: number): MemoryType {
+    if (storedType === MemoryType.IMPORTANT) {
+      return MemoryType.GOAL;
+    }
+    return storedType as MemoryType;
+  }
+
+  /**
+   * 标签迁移：把旧的「重要回忆类型」补成标签；同时补上 importance 下限，
+   * 使迁移后的记忆仍以「加粗描边 + 重要回忆标签」表达其重要性。
+   * 已经是新格式（带标签）的数据不做重复添加。
+   */
+  private static migrateTags(storedType: number, tags: string[]): string[] {
+    if (storedType !== MemoryType.IMPORTANT) {
+      return tags;
+    }
+    const out: string[] = [];
+    let hasTag: boolean = false;
+    for (let i = 0; i < tags.length; i++) {
+      if (tags[i] === IMPORTANT_MEMORY_TAG) {
+        hasTag = true;
+      }
+      out.push(tags[i]);
+    }
+    if (!hasTag) {
+      out.unshift(IMPORTANT_MEMORY_TAG);
+    }
+    return out;
+  }
+
   private storedMemoryToCloud(stored: StoredGuestMemory, userId: string): LongTermMemory {
     const memory = new LongTermMemory(userId, stored.id);
     memory.title = stored.title;
     memory.dateTimestamp = stored.dateTimestamp;
     memory.date = this.storedMemoryToMemory(stored).date;
-    memory.type = stored.type;
-    memory.importance = stored.importance;
-    memory.tags = JSON.stringify(stored.tags);
+    memory.type = DataSyncService.migrateType(stored.type);
+    memory.importance = stored.importance < GOAL_IMPORTANT_IMPORTANCE
+      && stored.type === MemoryType.IMPORTANT
+      ? GOAL_IMPORTANT_IMPORTANCE
+      : stored.importance;
+    memory.tags = JSON.stringify(DataSyncService.migrateTags(stored.type, stored.tags));
     memory.summary = stored.summary;
     memory.content = stored.content;
     memory.sourceEvents = JSON.stringify(stored.sourceEvents);

@@ -34,10 +34,13 @@ import { HdsNavigation, HdsNavigationTitleMode, HdsTabs, HdsTabsController, hdsM
 import { HdsNavigation, HdsNavigationTitleMode, HdsTabs, HdsTabsController, hdsMaterial, ScrollEffectType, HdsNavigationMenuContentOptions } from '@kit.UIDesignKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import { AppRouter, RouteName } from '../router/AppRouter';
-import { GardenController, CompanionService, TabController, HomeController, ShellState } from '../service/Services';
+import { GardenController, CompanionService, TabController, HomeController, ShellState,
+  DemoUIState, StateListener } from '../service/Services';
+import { DemoModeService } from '../service/DemoModeService';
 import { UserRepository, MemoryRepository, EventRepository, ComicRepository } from '../repository/Repositories';
 import { Memory, MemoryType, MoMoState, GardenMode, CheckInGuideStep, CheckInGuideState } from '../model/Models';
 import { AddSheetContent } from '../components/Sheets';
+import { DemoAIGateway } from '../service/ai/DemoAIGateway';
 import { PromptUtil } from '../utils/PromptUtil';
 import { Theme } from '../utils/Theme';
 import { DateUtil } from '../utils/DateUtil';
@@ -67,11 +70,26 @@ struct MainPage {
   private hasAppendedCheckIn: boolean = false;
   // 响应式花园模式（AppStorage 驱动，菜单随模式实时刷新）
   @StorageLink('gardenMode') gardenMode: number = 0;
+  // 演示模式：影响标题栏文案、菜单标签与首次打卡引导的生成方式
+  @State isDemo: boolean = false;
+  private demoListener: StateListener = () => {
+  };
   private tabsCtrl: HdsTabsController = new HdsTabsController();
   private hi: string = '你好';
 
   // 生命周期：初始化昵称/问候语、绑定 TabController/HomeController 桥、消费调试参数 autoNav（页面跳转或切 Tab）
   aboutToAppear(): void {
+    // 演示模式是内存态：冷启动一律回到真实数据，避免上一次演示残留
+    DemoModeService.get().disable().then(() => {
+      this.refreshDemoState();
+    }).catch(() => {
+      this.refreshDemoState();
+    });
+    this.demoListener = () => {
+      this.refreshDemoState();
+    };
+    DemoModeService.get().subscribe(this.demoListener);
+
     UserRepository.get().load().then((user) => {
       this.userName = user.name;
       this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
@@ -114,6 +132,15 @@ struct MainPage {
         }
       }, 900);
     }
+  }
+
+  aboutToDisappear(): void {
+    DemoModeService.get().unsubscribe(this.demoListener);
+  }
+
+  // 同步演示态：更新标题与菜单标签（订阅回调里调用，切 Tab 时也会重新计算）
+  private refreshDemoState(): void {
+    this.isDemo = DemoModeService.get().isDemo();
   }
 
   private async loadGuideState(): Promise<void> {
@@ -188,11 +215,15 @@ struct MainPage {
       const daily = append ? await EventRepository.get().appendCheckIn(text) : await EventRepository.get().getToday();
       await this.setGuideStep(CheckInGuideStep.SUMMARY_READY);
       const profile = UserRepository.get().getUser().profile;
-      const summary = await EventRepository.get().generateDailySummary(daily.events, profile.tone);
-      const comic = await ComicRepository.get().generateTodayComic(summary, daily.events, profile);
+      // 经网关分流：演示态秒回预制内容，真实态走云端并在失败时降级（不阻断引导）
+      const summary = await DemoAIGateway.dailySummary(daily.events, profile.tone);
+      const comic = await DemoAIGateway.comic(summary, daily.events, profile);
       if (!comic || comic.pages.length === 0) {
         throw new Error('漫画没有返回可展示的图片');
       }
+      EventRepository.get().updateTodaySummary(summary, daily.events);
+      // 回填到仓库，使首页卡片与今日漫画页读到同一份结果
+      ComicRepository.get().setGeneratedComic(comic);
       await this.setGuideStep(CheckInGuideStep.COMIC_READY);
       await OnboardingService.get().clearPendingCheckIn(this.guideUserId);
       PromptUtil.toast('今天的总结和漫画已经准备好了');
@@ -223,23 +254,21 @@ struct MainPage {
   }
 
   private currentTitle(): string {
-    if (this.tab === 0) {
-      return this.hi;
-    } else if (this.tab === 1) {
-      return '记忆花园';
-    }
-    return '设置';
+    const base: string = this.tab === 0 ? this.hi : (this.tab === 1 ? '记忆花园' : '设置');
+    // 演示态：标题前缀让评委一眼看出当前展示的不是真实数据
+    return this.isDemo ? DemoUIState.prefix() + base : base;
   }
 
   // 标题栏系统菜单（列表型）：首页 3 项（换状态/去花园/关于），花园 2 项（搜索/更多），设置无
-  // 标题栏系统菜单（列表型）：首页 3 项（换状态/去花园/关于），花园 2 项（搜索/更多），设置无
+  // 演示态下每项 label 前置「演示·」，提醒当前操作作用于演示数据
   private currentMenu(): HdsNavigationMenuContentOptions | undefined {
+    const p: string = this.isDemo ? DemoUIState.menuPrefix() : '';
     if (this.tab === 0) {
       return {
         value: [
-          { content: { label: '换状态', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: true, action: () => { HomeController.cycleState(); } } },
-          { content: { label: '去花园', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { TabController.switch(1); } } },
-          { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
+          { content: { label: p + '换状态', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: true, action: () => { HomeController.cycleState(); } } },
+          { content: { label: p + '去花园', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { TabController.switch(1); } } },
+          { content: { label: p + '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
         ]
       };
     } else if (this.tab === 1) {
@@ -250,17 +279,17 @@ struct MainPage {
           value: [
             { content: { label: '缩小', icon: $r('sys.symbol.minus'), isEnabled: true, action: () => { GardenController.zoomOut(); } } },
             { content: { label: '放大', icon: $r('sys.symbol.plus'), isEnabled: true, action: () => { GardenController.zoomIn(); } } },
-            { content: { label: '花园模式', icon: $r('sys.symbol.house'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.GARDEN); } } },
-            { content: { label: '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } }
+            { content: { label: p + '气泡花园', icon: $r('sys.symbol.flower'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.BUBBLE); } } },
+            { content: { label: p + '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } }
           ]
         };
       }
       return {
         value: [
-          { content: { label: '搜索记忆', icon: $r('sys.symbol.magnifyingglass'), isEnabled: true, action: () => { GardenController.openSearch(); } } },
-          { content: { label: '花园模式', icon: $r('sys.symbol.house'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.GARDEN); } } },
-          { content: { label: '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } },
-          { content: { label: '记忆树', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.TREE); } } },
+          { content: { label: p + '搜索记忆', icon: $r('sys.symbol.magnifyingglass'), isEnabled: true, action: () => { GardenController.openSearch(); } } },
+          { content: { label: p + '气泡花园', icon: $r('sys.symbol.flower'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.BUBBLE); } } },
+          { content: { label: p + '大纲模式', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.OUTLINE); } } },
+          { content: { label: p + '记忆树', icon: $r('sys.symbol.leaf'), isEnabled: true, action: () => { GardenController.switchTo(GardenMode.TREE); } } },
         ]
       };
     }

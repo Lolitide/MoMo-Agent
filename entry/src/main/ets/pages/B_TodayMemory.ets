@@ -26,7 +26,10 @@ import { HdsNavDestination, ScrollEffectType } from '@kit.UIDesignKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import { AppRouter, RouteName } from '../router/AppRouter';
 import { EventRepository } from '../repository/Repositories';
-import { AIServiceCloud } from '../service/ai/AIServiceCloud';
+import { DemoAIGateway } from '../service/ai/DemoAIGateway';
+import { DemoModeService } from '../service/DemoModeService';
+import { DemoUIState } from '../service/Services';
+import { DemoMockData } from '../mock/DemoMockData';
 import { DailyMemory, InsightItem, PageState } from '../model/Models';
 import { DateUtil } from '../utils/DateUtil';
 import { Theme } from '../utils/Theme';
@@ -51,8 +54,11 @@ export struct B_TodayMemory {
   private scroller: Scroller = new Scroller();
   private panBase: number = 290;
   @State isGenerating: boolean = false;
+  // 演示态：菜单标签与纠正浮层文案需要跟着切换
+  @State isDemo: boolean = false;
 
   aboutToAppear(): void {
+    this.isDemo = DemoModeService.get().isDemo();
     setTimeout(() => {
       EventRepository.get().getToday().then((daily) => {
         this.daily = daily;
@@ -83,14 +89,16 @@ export struct B_TodayMemory {
     }
     this.isGenerating = true;
     try {
-      const summary = await EventRepository.get().generateDailySummary(this.daily.events, '平静');
+      // 演示态：网关秒回预制文案；真实态：云端生成，失败降级（toast 由网关发出）
+      const summary = await DemoAIGateway.dailySummary(this.daily.events, '平静');
       const updated = new DailyMemory();
       updated.date = this.daily.date;
       updated.events = this.daily.events;
       updated.insights = this.daily.insights;
       updated.summary = summary;
       this.daily = updated;
-      PromptUtil.toast('真实云端总结已生成');
+      EventRepository.get().updateTodaySummary(summary, updated.events);
+      PromptUtil.toast(this.isDemo ? '演示总结已生成（演示数据）' : '真实云端总结已生成');
     } catch (err) {
       const error = err as Error;
       PromptUtil.toast(`云端生成失败：${error.message}`);
@@ -101,11 +109,12 @@ export struct B_TodayMemory {
 
   private async applyRealCorrection(text: string): Promise<void> {
     if (!this.daily.summary) {
-      PromptUtil.toast('请先生成云端总结');
+      PromptUtil.toast(this.isDemo ? '请先生成演示总结' : '请先生成云端总结');
       return;
     }
     try {
-      const summary = await AIServiceCloud.get().processMemoryCorrection(this.daily.summary, text);
+      // 演示态：网关秒回预制纠正结果；真实态：云端纠正，失败降级
+      const summary = await DemoAIGateway.correction(this.daily.summary, text);
       const updated = new DailyMemory();
       updated.date = this.daily.date;
       updated.events = this.daily.events;
@@ -113,7 +122,7 @@ export struct B_TodayMemory {
       updated.summary = summary;
       this.daily = updated;
       EventRepository.get().updateTodaySummary(summary, updated.events);
-      PromptUtil.toast('真实云端纠正已完成');
+      PromptUtil.toast(this.isDemo ? '演示纠正已完成（演示数据）' : '真实云端纠正已完成');
     } catch (err) {
       const error = err as Error;
       PromptUtil.toast(`云端纠正失败：${error.message}`);
@@ -171,7 +180,9 @@ export struct B_TodayMemory {
   sheetBuilder() {
     if (this.sheetMode !== 1) {
       CorrectionSheetContent({
-        originalText: '默默认为你今天的心情总体平稳，但下午可能有些疲惫。',
+        originalText: this.isDemo
+          ? DemoMockData.demoDailySummaryText()
+          : '默默认为你今天的心情总体平稳，但下午可能有些疲惫。',
         onDismiss: () => {
           this.sheetOpen = false;
         },
@@ -187,7 +198,9 @@ export struct B_TodayMemory {
         },
         onSubmit: (score: number, msg: string) => {
           this.sheetOpen = false;
-          PromptUtil.toast('已收到 ' + score.toString() + ' 星反馈，默默记住啦');
+          PromptUtil.toast(this.isDemo
+            ? DemoAIGateway.feedbackAck(score)
+            : '已收到 ' + score.toString() + ' 星反馈，默默记住啦');
         }
       })
     }
@@ -448,7 +461,7 @@ export struct B_TodayMemory {
         },
         menu: {
           value: [
-            { content: { label: '生成云端总结', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: !this.isGenerating, action: () => { this.generateRealSummary(); } } },
+            { content: { label: (this.isDemo ? DemoUIState.menuPrefix() : '') + '生成总结', icon: $r('sys.symbol.arrow_clockwise'), isEnabled: !this.isGenerating, action: () => { this.generateRealSummary(); } } },
             { content: { label: '关于默默', icon: $r('sys.symbol.star'), isEnabled: true, action: () => { AppRouter.push(RouteName.ABOUT); } } }
           ]
         }

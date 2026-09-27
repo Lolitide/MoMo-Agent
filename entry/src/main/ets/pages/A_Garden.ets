@@ -3,22 +3,22 @@
  * 文件名：pages/A_Garden.ets
  * ============================================================================
  * 【用途】一级 Tab「记忆花园」：以三种视图展示记忆——
- *   GARDEN（花园场景 + 节点标记 + 详情浮窗）、OUTLINE（记忆大纲列表）、
- *   TREE（MemoryTreeGraph 记忆树），以及搜索浮窗、模式菜单(ModeMenu)、编辑浮窗、
- *   缩放浮钮（树模式 ±）。
+ *   BUBBLE（气泡花园：按记忆类型分簇、花瓣式蜂巢排布，默认视图）、OUTLINE（记忆大纲列表）、
+ *   TREE（MemoryTreeGraph 记忆树），以及模式菜单(ModeMenu)、编辑浮窗、缩放浮钮（树模式 ±）。
  * 【前置条件 / 假设】
  *   - 依赖：MemoryRepository(订阅制)、GardenController（被 MainPage HDS 菜单调用）、
- *     ShellState.gardenScroller（滚动绑定）、MemoryRepository 数据；
+ *     ShellState.gardenScroller（滚动绑定）、BubbleLayoutUtil（气泡布局算法）；
  *   - 假设：详情面板/工具栏被“全屏容器”包裹时用 hitTestBehavior 放行点击；
- *     编辑浮窗与搜索/菜单浮窗均为“打开时挂载”，关闭不渲染。
+ *     编辑浮窗与菜单浮窗均为“打开时挂载”，关闭不渲染。
  * 【输入 / 输出（后置条件）】
- *   - 输入：HDS 菜单按钮（搜索/更多）、模式菜单选择、节点/列表点击、搜索关键字、
- *     编辑提交、缩放按钮、拖动收起详情；
+ *   - 输入：HDS 菜单按钮（搜索/更多）、模式菜单选择、气泡/列表点击、编辑提交、
+ *     缩放按钮、拖动收起详情；
  *   - 输出：视图切换（switchMode）、选中记忆详情面板（selectMemory/closeDetail）、
- *     树缩放(treeZoom)、编辑写回 MemoryRepository、搜索过滤(filtered)。
+ *     树缩放(treeZoom)、编辑写回 MemoryRepository、气泡布局重算(bubbleLayout)。
  * 【关键类 / 算法】
- *   - A_Garden：视图分发（mode 枚举 -> gardenView/outlineView/treeView）；
- *   - GardenNodeMarker：节点标记列；MemoryTreeGraph：树绘制；TreeLayout：树布局算法；
+ *   - A_Garden：视图分发（mode 枚举 -> bubbleView/outlineView/treeView）；
+ *   - gardenHeader：三种视图共用的玻璃卡头部（标题 + 计数 + 类型图例）；
+ *   - BubbleLayoutUtil：分簇与落位；MemoryBubble：单个气泡；MemoryTreeGraph：树绘制；
  *   - detailH：详情面板高度（拖动收起，吸附 196/372 等档位）。
  * 【参考源】
  *   - HarmonyLearn（知识图谱/树的绘制思路）；Examples/ArkUISample；
@@ -29,15 +29,16 @@ import { MemoryRepository } from '../repository/Repositories';
 import { GardenController } from '../service/Services';
 import { AppRouter, RouteName } from '../router/AppRouter';
 import {
-  GardenMode, GardenNodeItem, Memory, MemoryTreeNode, MemoryType, MemoryTypeUtil, PageState
+  GardenMode, Memory, MemoryTreeNode, MemoryType, MemoryTypeUtil, PageState
 } from '../model/Models';
 import { DateUtil } from '../utils/DateUtil';
 import { Theme } from '../utils/Theme';
 import { PromptUtil } from '../utils/PromptUtil';
 import { DeviceUtil } from '../utils/DeviceUtil';
+import { BubbleLayoutUtil, BubbleLayoutResult, BubbleSlot, FlowerCore } from '../utils/BubbleLayout';
 import { ShellState } from '../service/Services';
 import { ModeMenu } from '../components/ModeMenu';
-import { GardenNodeMarker } from '../components/GardenNodeMarker';
+import { MemoryBubble } from '../components/MemoryBubble';
 import { MemoryTreeGraph } from '../components/MemoryTreeGraph';
 import { GlassSheet } from '../components/GlassSheet';
 import { LoadingState, EmptyState } from '../components/StateViews';
@@ -51,10 +52,31 @@ interface EditSnapshot {
   label: string;
 }
 
+// 气泡渲染项：把「记忆数据」与「布局槽位」绑定在一起。
+// 存在的意义是让 ForEach 遍历一个已经对齐好的数组，而不是在渲染过程中查仓库。
+// keygen 是预先算好的稳定 key：ArkTS 的 ForEach keyGenerator 只允许引用参数本身，
+// 不能写 this.xxx 或复杂表达式，所以 key 必须在构造时算好存成字段。
+//
+// 【key 里绝对不能带选中态】这是性能与闪烁的根因：
+// 若 key 随选中态变化，点任意一颗气泡都会让**所有**气泡的 key 失效，
+// ArkUI 会销毁并重建全部组件 → 重建时 entered=false 先渲染成透明再淡入，
+// 视觉上就是「两颗按钮一起闪」+ 明显延迟。选中态改由 @Prop selected 透传即可。
+class BubbleItem {
+  memory: Memory;
+  slot: BubbleSlot;
+  keygen: string;
+
+  constructor(memory: Memory, slot: BubbleSlot) {
+    this.memory = memory;
+    this.slot = slot;
+    this.keygen = memory.id;
+  }
+}
+
 @Component
 export struct A_Garden {
   @State pageState: PageState = PageState.LOADING;
-  @State mode: GardenMode = GardenMode.GARDEN;
+  @State mode: GardenMode = GardenMode.BUBBLE;
   @State memories: Memory[] = [];
   @State selectedMemory: Memory | null = null;
   @State detailH: number = 196;
@@ -69,6 +91,18 @@ export struct A_Garden {
   @State undoStack: EditSnapshot[] = [];
   @State redoStack: EditSnapshot[] = [];
   @State treeZoom: number = 1;
+  // ===== 气泡花园 =====
+  // bubbleLayout 由 BubbleLayoutUtil 计算（分簇 + 落位 + 焦点缩放），
+  // 在记忆变化/切回气泡模式时重算；Viewport 尺寸来自 onAreaChange。
+  @State bubbleLayout: BubbleLayoutResult = new BubbleLayoutResult();
+  // 已与数据对齐的渲染列表：在 recomputeBubbleLayout() 里一次算好，
+  // 避免在 ForEach 内反复查仓库（既低效，又依赖非响应式数据导致刷新不确定）
+  @State bubbleItems: BubbleItem[] = [];
+  // 当前选中记忆的 id 副本：ForEach 的 keyGenerator 只能访问参数，
+  // 用它把选中态拼进 key，保证选中变化时该气泡重建（焦点环/日期不会滞留）
+  @State bubbleSelectedId: string = '';
+  @State viewportW: number = 360;
+  @State viewportH: number = 780;
   @State editTitle: string = '';
   @State editTags: string = '';
   @State editSummary: string = '';
@@ -76,6 +110,8 @@ export struct A_Garden {
   private repoListener: () => void = () => {
   };
   private panBase: number = 196;
+  // 气泡视图已改为不滚动（4 簇自适应装进一屏），但 MainPage 仍把这个 Scroller 交给
+  // HdsNavigation.bindToScrollable 做标题栏渐变模糊，因此保留引用以免破坏标题栏效果。
   private gardenScroller: Scroller = ShellState.gardenScroller;
   private outlineScroller: Scroller = ShellState.gardenOutlineScroller;
 
@@ -88,6 +124,7 @@ export struct A_Garden {
     }
     this.repoListener = () => {
       this.memories = this.repo.getAll();
+      this.recomputeBubbleLayout();
       if (this.selectedMemory !== null) {
         const found = this.repo.getById(this.selectedMemory.id);
         if (found === null) {
@@ -123,6 +160,9 @@ export struct A_Garden {
     };
     setTimeout(() => {
       this.memories = this.repo.getAll();
+      // 布局的纵向锚点按屏高比例计算，必须先拿到真实尺寸再算
+      DeviceUtil.initFromUi(this.getUIContext());
+      this.recomputeBubbleLayout();
       this.pageState = PageState.SUCCESS;
       if (GardenController.pendingFocusId !== '') {
         // 从搜索页返回：按进入搜索前的视图模式聚焦
@@ -143,21 +183,18 @@ export struct A_Garden {
               }, 200);
             }
           } else {
-            // 花园模式：选中节点（带选中环+详情浮层）；记忆树模式：高亮该节点
+            // 从搜索页返回：选中该记忆（带选中环 + 详情浮层），记忆树模式同样以浮层呈现详情
             this.selectMemory(target);
           }
         }
       } else {
         const first = this.repo.getById('m4');
         if (first !== null) {
-          if (this.mode === GardenMode.GARDEN) {
-            // 花园模式：默认选中并打开节点详情（系统浮层，查看模式）
-            this.selectMemory(first);
-          } else {
-            // 大纲/记忆树：仅高亮首个节点，不弹浮层
-            this.selectedMemory = first;
-            this.detailOpen = false;
-          }
+          // 首屏不自动弹详情浮层：气泡花园的下半屏会被浮层遮住，先让用户看到完整花簇。
+          // 仅高亮默认节点，点任意气泡/花心再打开详情。
+          this.selectedMemory = first;
+          this.detailOpen = false;
+          this.recomputeBubbleLayout();
         }
       }
     }, 400);
@@ -177,31 +214,50 @@ export struct A_Garden {
     return this.selectedMemory as Memory;
   }
 
-  private nodePosOf(mem: Memory): GardenNodeItem {
-    // Keep memories on the meadow instead of scattering them across the sky.
-    // The fixed anchors also make a memory stay visually stable after refreshes.
-    const anchors: number[][] = [
-      [16, 61], [39, 56], [64, 61], [84, 56],
-      [25, 76], [50, 70], [74, 77], [91, 69]
-    ];
-    let index = 0;
-    for (let i = 0; i < this.memories.length; i++) {
-      if (this.memories[i].id === mem.id) {
-        index = i;
-        break;
+  /**
+   * 重算气泡布局。
+   * 【重要】这里直接读 MemoryRepository，而不是读 this.memories：
+   * 页面可能先于 repoListener 的 setState 完成渲染（例如刚在设置页开了演示模式就切到花园），
+   * 此时 this.memories 仍是旧数组，会出现「花瓣是新的、花心计数是旧的」的数据不同步
+   * （真机实测过）。以仓库为唯一数据源即可消除这个竞态，同时顺带把 this.memories 校正回来。
+   * 输入顺序用日期倒序，使每朵花内部按「最新的花瓣先出现」绽放，且与大纲模式一致。
+   *
+   * 【只在数据/尺寸变化时调用】选中态变化不要走这里——那会重算布局并让 ForEach 重建全部气泡。
+   * 选中态请看 syncBubbleSelection()。
+   */
+  private recomputeBubbleLayout(): void {
+    const list = this.repo.getAll().slice();
+    list.sort((a: Memory, b: Memory) => {
+      if (a.date === b.date) {
+        return 0;
+      }
+      return a.date < b.date ? 1 : -1;
+    });
+    this.memories = list;
+    // 布局同时依赖屏宽与屏高：直径由可用矩形自适应反解，目标是 4 簇全部装进一屏
+    this.bubbleLayout = BubbleLayoutUtil.layout(list, this.viewportW, this.viewportH);
+    const items: BubbleItem[] = [];
+    for (let i = 0; i < this.bubbleLayout.slots.length; i++) {
+      const slot = this.bubbleLayout.slots[i];
+      if (slot.mini) {
+        continue;
+      }
+      const m = this.repo.getById(slot.memoryId);
+      if (m !== null) {
+        items.push(new BubbleItem(m, slot));
       }
     }
-    const n = new GardenNodeItem();
-    n.id = 'auto-' + mem.id;
-    n.memoryId = mem.id;
-    if (index < anchors.length) {
-      n.x = anchors[index][0];
-      n.y = anchors[index][1];
-    } else {
-      n.x = 14 + ((index * 29) % 76);
-      n.y = 59 + ((index * 17) % 22);
-    }
-    return n;
+    this.bubbleItems = items;
+    this.syncBubbleSelection();
+  }
+
+  /**
+   * 只同步选中态：不重算布局、不重建气泡。
+   * 气泡的选中描边由 @Prop selected 透传更新（约 160ms 的平滑过渡），
+   * 因此点击是"就地更新"而不是"整片重建"——这是消除点击延迟与闪烁的关键。
+   */
+  private syncBubbleSelection(): void {
+    this.bubbleSelectedId = this.selectedMemory !== null ? this.selectedMemory.id : '';
   }
 
   private countOf(type: MemoryType): number {
@@ -217,6 +273,9 @@ export struct A_Garden {
   // 选中记忆：打开详情面板（detailH 吸附高度）+ 更新编辑浮窗数据源
   private selectMemory(m: Memory): void {
     this.selectedMemory = m;
+    // 只同步选中态，**不重算布局、不重建气泡**：否则点一颗会牵连重建全部，
+    // 表现为点击延迟 + 两颗一起闪烁（真机实测）
+    this.syncBubbleSelection();
     // 同步编辑表单：编辑视图继承当前节点信息
     this.editTitle = m.title;
     this.editTags = m.tags.join('，');
@@ -232,6 +291,7 @@ export struct A_Garden {
   // 收起详情面板（空白处点击/再次点击节点/下拉把手/取消编辑时调用）
   private closeDetail(): void {
     this.selectedMemory = null;
+    this.syncBubbleSelection();
     this.detailOpen = false;
   }
 
@@ -244,6 +304,10 @@ export struct A_Garden {
     this.selectedMemory = null;
     this.detailH = 196;
     this.detailOpen = false;
+    // 切回气泡视图时按当前尺寸重算，保证从其它视图返回后位置一致
+    if (m === GardenMode.BUBBLE || m === GardenMode.GARDEN) {
+      this.recomputeBubbleLayout();
+    }
   }
 
   private sortedMemories(): Memory[] {
@@ -262,10 +326,12 @@ export struct A_Garden {
     root.id = 'root';
     root.title = '记忆花园';
     root.type = 'root';
-    const gNames: string[] = ['生活', '学习', '兴趣', '目标', '重要回忆'];
-    const gKeys: MemoryType[] = [MemoryType.LIFE, MemoryType.STUDY, MemoryType.INTEREST, MemoryType.GOAL, MemoryType.IMPORTANT];
+    // 与气泡花园的分簇保持一致：4 类。「重要回忆」是标签而非类型，因此不单独成组，
+    // 这类记忆会按其真实类型（现为「目标」）归入对应分组。
+    const gNames: string[] = ['生活', '学习', '目标', '兴趣'];
+    const gKeys: MemoryType[] = [MemoryType.LIFE, MemoryType.STUDY, MemoryType.GOAL, MemoryType.INTEREST];
     const groups: MemoryTreeNode[] = [];
-    for (let g = 0; g < 5; g++) {
+    for (let g = 0; g < gKeys.length; g++) {
       const group = new MemoryTreeNode();
       group.id = 'group-' + g.toString();
       group.title = gNames[g];
@@ -331,8 +397,81 @@ export struct A_Garden {
     });
   }
 
+  /**
+   * 三种视图共用的玻璃卡头部：标题 + 记忆总数 + 五类图例。
+   * 从旧 gardenView 中原样抽出，保证改版后头部视觉与大纲/树视图一致。
+   */
   @Builder
-  gardenView() {
+  gardenHeader() {
+    Column({ space: 14 }) {
+      Row() {
+        Column({ space: 4 }) {
+          Text('记忆花园')
+            .fontSize(Theme.fontSize(12))
+            .fontColor('#5F7A63')
+            .fontWeight(FontWeight.Medium)
+          Text('正在生长的生活片段')
+            .fontSize(Theme.fontSize(20))
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#1D3424')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        Column({ space: 1 }) {
+          Text(this.memories.length.toString())
+            .fontSize(Theme.fontSize(24))
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#2C8750')
+          Text('片记忆')
+            .fontSize(Theme.fontSize(10))
+            .fontColor('#6F8272')
+        }
+        .width(54)
+        .alignItems(HorizontalAlign.End)
+      }
+      .width('100%')
+
+      Row({ space: 3 }) {
+        // 只列 4 种类型：「重要回忆」是标签而非类型（已并入目标簇），不再单独成项
+        ForEach([
+          MemoryType.LIFE, MemoryType.STUDY, MemoryType.GOAL, MemoryType.INTEREST
+        ], (type: MemoryType) => {
+          Row({ space: 5 }) {
+            Column()
+              .width(8)
+              .height(8)
+              .borderRadius(4)
+              .backgroundColor(MemoryTypeUtil.colorOf(type))
+            Text(MemoryTypeUtil.nameOf(type) + ' ' + this.countOf(type).toString())
+              .fontSize(Theme.fontSize(10))
+              .fontColor('#66776A')
+          }
+          .padding({ left: 6, right: 6, top: 5, bottom: 5 })
+          .backgroundColor('rgba(255,255,255,0.52)')
+          .borderRadius(12)
+        }, (type: MemoryType) => type.toString())
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Start)
+    }
+    .width('88%')
+    .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+    .position({ x: '6%', y: 92 })
+    .borderRadius(24)
+    .backgroundColor('rgba(250,255,249,0.82)')
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+    .border({ width: 1, color: 'rgba(255,255,255,0.82)' })
+    .shadow({ radius: 22, color: 'rgba(47,84,54,0.12)', offsetY: 7 })
+  }
+
+  /**
+   * 气泡花园：按 4 种记忆类型分簇，每簇是一朵「生长中的花」。
+   * 花心与主圆显示图标 + 简短日期；数量溢出时用同色小实心圆点补位。
+   * 布局由 BubbleLayoutUtil 计算，内容高度由布局给出 → 本区域与记忆树一样可自由纵向滚动。
+   */
+  @Builder
+  bubbleView() {
     Stack({ alignContent: Alignment.Top }) {
       Image($r('app.media.garden_bg'))
         .width('100%')
@@ -341,85 +480,57 @@ export struct A_Garden {
         .opacity(0.96)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
-      // A quiet glass header gives the scene a visual anchor without covering the garden.
-      Column({ space: 14 }) {
-        Row() {
-          Column({ space: 4 }) {
-            Text('记忆花园')
-              .fontSize(Theme.fontSize(12))
-              .fontColor('#5F7A63')
-              .fontWeight(FontWeight.Medium)
-            Text('正在生长的生活片段')
-              .fontSize(Theme.fontSize(20))
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#1D3424')
+      // 【不滚动】4 簇由 BubbleLayoutUtil 自适应排进一屏：
+      // 直径由可用矩形反解得出，因此不需要 Scroll，也就不会出现圆圈被裁切。
+      // 真机实测教训：固定直径 + 一簇一行时，4 簇纵向叠加会远超可用高度，
+      // 表现为「必须滚动 + 圆圈被裁 + 气泡压到下一簇花心」。
+      Stack({ alignContent: Alignment.TopStart }) {
+        // 花心：很小的实心圆点（**不承载记忆**，因此不会盖住任何圆的内容）。
+        // 位置在簇正中，记忆圆环绕它排布。
+        ForEach(this.bubbleLayout.cores, (c: FlowerCore) => {
+          Column()
+            .width(c.d)
+            .height(c.d)
+            .borderRadius(Theme.RADIUS_PILL)
+            .backgroundColor(MemoryTypeUtil.colorOf(c.type))
+            .position({ x: c.x - c.d / 2, y: c.y - c.d / 2 })
+            .zIndex(1)
+        // key 含类型与坐标：避免簇变化时 ArkUI 复用旧组件（真机实测过位置冻结）
+        }, (c: FlowerCore) => 'c|' + c.type.toString()
+          + '|' + c.x.toFixed(1) + ',' + c.y.toFixed(1))
+
+        // 小圆点：同色实心，纯装饰（表示"还有更多同类记忆"，不承载具体内容）
+        ForEach(this.bubbleLayout.slots, (s: BubbleSlot) => {
+          if (s.mini) {
+            Column()
+              .width(s.d)
+              .height(s.d)
+              .borderRadius(Theme.RADIUS_PILL)
+              .backgroundColor(MemoryTypeUtil.colorOf(s.type))
+              .opacity(0.88)
+              .position({ x: s.x - s.d / 2, y: s.y - s.d / 2 })
+              .zIndex(1)
           }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1)
+        }, (s: BubbleSlot) => 'm|' + s.type.toString() + '|' + s.order.toString())
 
-          Column({ space: 1 }) {
-            Text(this.memories.length.toString())
-              .fontSize(Theme.fontSize(24))
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#2C8750')
-            Text('片记忆')
-              .fontSize(Theme.fontSize(10))
-              .fontColor('#6F8272')
-          }
-          .width(54)
-          .alignItems(HorizontalAlign.End)
-        }
-        .width('100%')
-
-        Row({ space: 3 }) {
-          ForEach([
-            MemoryType.LIFE, MemoryType.STUDY, MemoryType.INTEREST,
-            MemoryType.GOAL, MemoryType.IMPORTANT
-          ], (type: MemoryType) => {
-            Row({ space: 5 }) {
-              Column()
-                .width(7)
-                .height(7)
-                .borderRadius(4)
-                .backgroundColor(MemoryTypeUtil.colorOf(type))
-              Text(MemoryTypeUtil.nameOf(type) + ' ' + this.countOf(type).toString())
-                .fontSize(Theme.fontSize(10))
-                .fontColor('#66776A')
-            }
-            .padding({ left: 5, right: 5, top: 5, bottom: 5 })
-            .backgroundColor('rgba(255,255,255,0.52)')
-            .borderRadius(12)
-          }, (type: MemoryType) => type.toString())
-        }
-        .width('100%')
-        .justifyContent(FlexAlign.Start)
-      }
-      .width('88%')
-      .padding({ left: 16, right: 16, top: 14, bottom: 14 })
-      .position({ x: '6%', y: 92 })
-      .borderRadius(24)
-      .backgroundColor('rgba(250,255,249,0.82)')
-      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-      .border({ width: 1, color: 'rgba(255,255,255,0.82)' })
-      .shadow({ radius: 22, color: 'rgba(47,84,54,0.12)', offsetY: 7 })
-
-      ForEach(this.memories, (m: Memory) => {
-        Column() {
-          GardenNodeMarker({
-            memory: m,
-            selected: this.selectedMemory !== null && this.selectedMemory.id === m.id,
-            onTap: (mm: Memory) => {
+        // 主圆：图标 + 简短日期，可点击进详情
+        ForEach(this.bubbleItems, (item: BubbleItem) => {
+          MemoryBubble({
+            memory: item.memory,
+            d: item.slot.d,
+            selected: this.selectedMemory !== null && this.selectedMemory.id === item.memory.id,
+            onPick: (mm: Memory) => {
               this.selectMemory(mm);
             }
           })
-        }
-        .position({
-          x: this.nodePosOf(m).x + '%',
-          y: this.nodePosOf(m).y + '%'
-        })
-        .translate({ x: -52, y: -42 })
-        .zIndex(this.selectedMemory !== null && this.selectedMemory.id === m.id ? 5 : 1)
-      }, (m: Memory) => m.id)
+            .position({ x: item.slot.x - item.slot.d / 2, y: item.slot.y - item.slot.d / 2 })
+            .zIndex(this.selectedMemory !== null && this.selectedMemory.id === item.memory.id ? 5 : 2)
+        }, (item: BubbleItem) => item.keygen)
+      }
+      .width('100%')
+      .height('100%')
+
+      this.gardenHeader()
 
       if (this.memories.length === 0) {
         EmptyState({
@@ -1027,12 +1138,14 @@ export struct A_Garden {
       } else if (this.pageState === PageState.EMPTY) {
         EmptyState({ text: '花园空空如也', icon: $r('sys.symbol.flower') })
       } else {
-        if (this.mode === GardenMode.GARDEN) {
-          this.gardenView()
-        } else if (this.mode === GardenMode.OUTLINE) {
+        // 气泡花园为默认视图；GARDEN 数值仅由旧调试入口传入，一并渲染气泡视图，
+        // 避免出现「已删除的视图分支」导致白屏
+        if (this.mode === GardenMode.OUTLINE) {
           this.outlineView()
         } else if (this.mode === GardenMode.TREE) {
           this.treeView()
+        } else {
+          this.bubbleView()
         }
       }
 
@@ -1062,6 +1175,16 @@ export struct A_Garden {
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.BG)
+    // 气泡布局的纵向锚点按屏高比例计算，需在拿到真实尺寸后重算一次
+    .onAreaChange((oldValue: Area, newValue: Area) => {
+      const w = Number(newValue.width);
+      const h = Number(newValue.height);
+      if (w > 0 && h > 0 && (Math.abs(w - this.viewportW) > 1 || Math.abs(h - this.viewportH) > 1)) {
+        this.viewportW = w;
+        this.viewportH = h;
+        this.recomputeBubbleLayout();
+      }
+    })
     // 节点详情系统浮层（常驻模态）：下拖/点遮罩/操作完成时由 bindSheet 系统动画下移出屏
     .bindSheet($$this.detailOpen, this.memorySheetBuilder(), {
       // 查看约 1/3 屏；点击编辑 -> 浮层升至屏幕 50%（状态驱动高度）

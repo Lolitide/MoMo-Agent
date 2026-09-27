@@ -20,7 +20,7 @@
  */
 import { DateUtil } from '../utils/DateUtil';
 import {
-  Comic, ComicPage, CompanionState, DailyMemory, EventItem, GardenNodeItem, InsightItem,
+  Comic, ComicPage, CompanionState, DailyMemory, EventItem, InsightItem,
   Memory, MemoryTreeNode, MemoryType, MoMoState, User
 } from '../model/Models';
 
@@ -107,10 +107,10 @@ export class MockData {
     m3.summary = '把注意力从「怎么做」拉回「为什么这样做」。';
     m3.content = '你在地铁上重读原研哉，划出了三处关于「留白」的段落，其中一句还发给了朋友。';
     m3.tags = ['阅读', '设计'];
-    const m4 = mk('m4', '给默默的新家画了第一株花', 2026, 10, 28, MemoryType.IMPORTANT, 5);
+    const m4 = mk('m4', '给默默的新家画了第一株花', 2026, 10, 28, MemoryType.GOAL, 5);
     m4.summary = '你和默默一起诞生的第一个「记忆花园」纪念日。';
     m4.content = '这天你决定和默默一起生活。你在花园里种下了第一株花，代表「遇见」。希望默默记住：遇见你，是它最重要的事。';
-    m4.tags = ['纪念日', '默默', '重要'];
+    m4.tags = ['重要回忆', '纪念日', '默默'];
     m4.relatedMemoryIds = ['m8'];
     const m5 = mk('m5', '年末目标：完成 12 篇漫画', 2026, 10, 18, MemoryType.GOAL, 3);
     m5.summary = '把你的生活画成系列漫画，每周一篇。';
@@ -125,30 +125,13 @@ export class MockData {
     m7.summary = '你的三月歌单又更新了一首单曲循环。';
     m7.content = '你散步时听完了一整张专辑，最喜欢第三首，把它加入了「散步歌单」。';
     m7.tags = ['音乐', '散步'];
-    const m8 = mk('m8', '遇见默默', 2026, 10, 28, MemoryType.IMPORTANT, 5);
+    const m8 = mk('m8', '遇见默默', 2026, 10, 28, MemoryType.GOAL, 5);
     m8.summary = '一颗种子决定住在你的手机里。';
     m8.content = '你给默默起了名字，说好要互相陪伴。默默把这天当作自己的生日。';
-    m8.tags = ['默默', '生日', '重要'];
+    m8.tags = ['重要回忆', '默默', '生日'];
     m8.relatedMemoryIds = ['m4'];
     mem.push(m1, m2, m3, m4, m5, m6, m7, m8);
     return mem;
-  }
-
-  static buildGardenNodes(): GardenNodeItem[] {
-    const nodes: GardenNodeItem[] = [];
-    const positions: number[][] = [
-      [30, 46], [52, 40], [70, 47], [40, 56],
-      [62, 56], [24, 58], [48, 64], [78, 60]
-    ];
-    for (let i = 0; i < 8; i++) {
-      const n = new GardenNodeItem();
-      n.id = 'g-node-' + i.toString();
-      n.memoryId = 'm' + (i + 1).toString();
-      n.x = positions[i][0];
-      n.y = positions[i][1];
-      nodes.push(n);
-    }
-    return nodes;
   }
 
   static buildTreeNodes(): MemoryTreeNode {
