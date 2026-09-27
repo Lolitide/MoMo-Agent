@@ -12,11 +12,23 @@
 
 ## 当前状态
 
-**第一轮（Mock UI 全量实现）已完成。** 当前仓库是一个可运行、可点击、可导航的完整产品骨架：全部页面使用 Mock 数据驱动，AI / 系统数据 / 跨设备能力均通过 Repository 与 Service 层隔离，为后续接入真实能力预留了替换接口。
+**产品骨架 + 真实云端 AI 闭环 + 演示模式，均已可用。** 页面与导航来自第一轮 Mock UI；此后接入了华为云函数（DeepSeek 总结/纠正、即梦出图）与云数据库模型；本轮新增**演示模式**，用于比赛现场无风险演示。
 
 - 包名：`com.example.momo`
 - 版本：2.0
 - 目标设备：phone
+- 登录：华为账号登录 或 **游客登录**（设备 ID）；游客数据默认只存本机，AI 云函数不要求登录
+
+### 演示模式（本机内存态，默认关闭）
+
+入口：**设置 → 演示模式**。打开后载入一套预置演示内容（14 条长期记忆、7 条今日事件、9 条「默默的理解」、5 页今日漫画），全站标题与菜单会带「演示 ·」前缀。
+
+- **只在演示模式展示 Mock 数据**：关闭时一切走真实数据路径，行为与接入演示模式前逐屏一致。
+- **数据是分离的**：演示内容只存在于内存，绝不写入游客快照（`momo_guest_data_v1`）、档案（`momo_onboarding_v1`）、AI 配置或云端；退出演示模式时全部丢弃，进入前的数据原样还原。
+- **游客照样能用 AI**：演示模式下默认秒回预制内容（不联网）；点标题栏的「演示·生成总结 / 演示·生成漫画」即可走真实云端 AI，失败时自动降级并提示，不会把现场演示卡在错误页。
+- 与普通 Mock 的分工：普通模式兜底数据在 `mock/MockData.ets`，演示数据在 `mock/DemoMockData.ets`。
+
+实现与验收细节见 `项目现状与MVP差距报告.md`。
 
 ## 技术栈
 
@@ -36,24 +48,28 @@ entry/src/main/ets/
 ├── pages/            # 页面
 │   ├── MainPage.ets        # 应用外壳：HdsNavigation + HdsTabs + 全局浮窗
 │   ├── A_Home.ets          # 一级：首页（陪伴空间）
-│   ├── A_Garden.ets        # 一级：记忆花园（花园 / 大纲 / 记忆树三模式）
+│   ├── A_Garden.ets        # 一级：记忆花园（气泡花园 / 大纲 / 记忆树三模式）
 │   ├── A_Settings.ets      # 一级：设置
 │   ├── B_TodayMemory.ets   # 二级：今日状态
 │   ├── B_DailyComic.ets    # 二级：今日漫画
 │   ├── B_About.ets         # 二级：关于默默
 │   ├── B_Search.ets        # 二级：记忆搜索
 │   └── B_ComicViewer.ets   # 三级：漫画查看器
-├── components/       # 复用组件（MoMoAvatar、MoMoCard、EventTimeline、
+├── components/       # 复用组件（MoMoAvatar、MoMoCard、EventTimeline、MemoryBubble、
 │   │                 #   MemoryTreeGraph、GlassSheet、StateViews、BottomNavBar 等）
 │   └── momo/         # 默默角色引擎（状态表、动作数学、覆盖层、地理数据）
 ├── model/            # 领域模型（Memory、EventItem、DailyMemory、Comic、
 │                     #   MoMoState、GardenMode、PageState 等）
-├── mock/             # Mock 数据（记忆、事件、漫画、用户）
-├── repository/       # 仓库层（Memory / Event / Comic / User，单例 + 订阅）
+├── mock/             # Mock 数据（MockData 兜底数据 / DemoMockData 演示数据）
+├── repository/       # 仓库层（Memory / Event / Comic / User，单例 + 订阅 + 演示态切换）
 ├── router/           # AppRouter：统一路由名与压栈 / 出栈封装
-├── service/          # 服务层（CompanionService 状态机、GardenController、
-│                     #   TabController、ShellState）
-└── utils/            # 工具（Theme、DateUtil、DeviceUtil、TreeLayout、PromptUtil）
+├── service/          # 服务层（CompanionService 状态机、DemoModeService 演示模式、
+│                     #   GardenController、TabController、ShellState）
+│   ├── ai/           # AI 通路（AIServiceCloud 真实云端 / DemoAIGateway 分流与降级）
+│   ├── auth/         # 认证（设备 ID 游客 / 华为账号）
+│   ├── cloud/        # 华为云（函数 / 数据库 / 存储）
+│   └── system/       # 系统数据源（日历 / 待办等，未启用）
+└── utils/            # 工具（Theme、DateUtil、DeviceUtil、TreeLayout、BubbleLayout、PromptUtil）
 ```
 
 ## 第一轮已完成任务
@@ -71,7 +87,7 @@ entry/src/main/ets/
 - 按设计稿还原各页面布局、信息层级、卡片、圆角、留白与字体层级
 - 全量沉浸式 HDS 标题栏：滚动渐变模糊、系统菜单（换状态 / 去花园 / 关于 / 搜索 / 树缩放等）
 - 底部悬浮导航栏 + 分离式 "+" 加号，点击弹出全局 "记一笔" 浮窗（写入 Mock 记忆仓库）
-- 记忆花园三模式：花园模式（节点地图）、大纲模式（列表）、记忆树模式（可缩放树图）
+- 记忆花园三模式：**气泡花园**（按记忆类型分簇的花瓣式蜂巢，默认）、大纲模式（列表）、记忆树模式（可缩放树图）
 - 默默角色：多种表情状态绘制、动画与状态切换（首页菜单可手动切换状态）
 - 补齐 Loading / Empty / Error 页面状态、点击反馈、Mock 删除与撤回 / 重做、设置项开关等基础交互
 - 应用图标与启动页适配
@@ -83,23 +99,23 @@ entry/src/main/ets/
 - `CompanionService` 状态机（IDLE / CURIOUS / HAPPY / THINKING / LISTENING / SLEEPING）与跨页状态同步
 - 路由统一由 `AppRouter` + `RouteName` 管理，页面内不散落字符串
 
-### 明确未做（本轮非目标）
+### 明确未做
 
-真实 LLM / Embedding / 向量数据库 / RAG、真实日历 / 待办 / 备忘录读取、真实跨设备迁移与云端同步、复杂账号系统——均留待后续轮次。
+真实向量数据库 / RAG 语义检索、真实日历 / 待办 / 备忘录读取（仅本地偏好开关）、真实跨端迁移、完整账号体系与用户级云端数据隔离——详见 `项目现状与MVP差距报告.md` 的差距对照表。
 
 ## 后续任务路线
 
 参照 `MoMo-DOC/开发笔记参考/05-鸿蒙实现与开发计划.md` 的 Phase 划分：
 
-| 阶段 | 任务 | 说明 |
-| --- | --- | --- |
-| 数据持久化 | Event / L1 / L2 记忆 CRUD 落盘 | 将 Mock 内存存储替换为本地数据库 |
-| 系统数据接入 | 日历、待办、备忘录 | 申请数据权限，替换 `EventRepository` 的 Mock 实现 |
-| Agent 系统 | Observation / Memory / Expression / Reflection / Companion | 五 Agent 协作，接入 HarmonyOS Agent Framework |
-| AI 能力 | LLM、Embedding、向量记忆、RAG、漫画生成 | 通过 `AIService` 接口替换 Mock |
-| 跨设备 | 分布式迁移、云端同步 | 默默在不同设备间延续陪伴 |
-| 增强（P1/P2） | 更丰富桌宠动画与状态、记忆搜索强化、陪伴统计、更多数据源、关系成长体系 | 在现有骨架上迭代 |
-| 测试与演示 | UI / 数据 / AI / 权限 / 网络 / 跨设备测试，Demo Mode、演示数据与脚本 | 比赛演示准备 |
+| 阶段 | 任务 | 说明 | 状态 |
+| --- | --- | --- | --- |
+| AI 能力 | LLM 总结 / 纠正、漫画脚本 + 出图 | 经华为云函数接 DeepSeek 与即梦 AI | ✅ 已接入（游客可用） |
+| 演示模式 | 预置演示数据 + 离线降级 + 与真实数据隔离 | 设置页开关，内存态 | ✅ 已完成（本轮） |
+| 数据持久化 | L2 记忆本机落盘 + 游客快照 | 云端 L0/L1/L2 同步受 Creator ACL 阻塞 | 🟡 部分完成 |
+| 系统数据接入 | 日历、待办、备忘录 | 申请数据权限，替换 `EventRepository` 的 Mock 实现 | ❌ 未开始 |
+| Agent 系统 | Observation / Memory / Expression / Reflection / Companion | 五 Agent 协作，接入 HarmonyOS Agent Framework | 🟡 职责已映射到服务层，未按 Agent 抽象 |
+| 跨设备 | 分布式迁移、云端同步 | 默默在不同设备间延续陪伴 | ❌ 未开始 |
+| 增强（P1/P2） | 更丰富桌宠动画与状态、记忆搜索强化、陪伴统计、更多数据源、关系成长体系 | 在现有骨架上迭代 | ❌ 未开始 |
 
 迭代方式：小步修改、不重构整页、不破坏已完成页面（见 `MoMo-DOC/迭代用提示词/page-edit.md`）。
 
@@ -111,9 +127,14 @@ entry/src/main/ets/
 
 ### 共享后端与签名说明
 
-如果你要分发自己已经签名的应用，让其他人直接使用你的华为登录和云函数后端，请先阅读 [`PUBLIC_REPOSITORY_SETUP.md`](PUBLIC_REPOSITORY_SETUP.md)。云函数的 DeepSeek、Ark 等服务密钥只配置在华为云函数环境变量中，不能写入仓库；`.p12` 私钥和签名密码也不能共享。
+如果你要分发自己已经签名的应用，让其他人直接使用你的华为登录和云函数后端，请注意：
 
-当前工程默认把游客和未完成 Cloud Foundation 身份绑定的数据保存在本机。AI 云函数可以使用共享 AGC 项目，但 CloudDB/Cloud Storage 只有在完成真实云身份与用户级 ACL 配置后才会启用，不能仅凭客户端 `userId` 实现多人数据隔离。
+1. **只跑本地 Mock 版本**：保持 `build-profile.json5` 的 `signingConfigs` 为空，先用「游客登录」跑通本地流程；云服务初始化失败会自动降级，这不代表云端已配置好。
+2. **共享同一套已部署后端**：把源码给对方自行编译即可复用同一个 AGC 项目；分发已签名 HAP 与「让源码可编译」是两件事，需要分开处理。
+3. **密钥只放云端**：云函数的 DeepSeek、Ark 等服务密钥只配置在华为云函数环境变量里，不得写入仓库；`agconnect-services.json` 属于客户端配置文件，可随工程分发。
+4. **不可共享的材料**：`.p12` 私钥、签名密码、与本机调试设备绑定的 `.p7b` Provisioning Profile。仓库已通过 `.gitignore` 排除 `sign/`、`entry/signatures/` 与 `cloud-functions/character-config.json`。
+
+当前工程默认把游客和未完成 Cloud Foundation 身份绑定的数据保存在本机。AI 云函数可以使用共享 AGC 项目，但 CloudDB/Cloud Storage 只有在完成真实云身份与用户级 ACL 配置后才会启用，不能仅凭客户端 `userId` 实现多人数据隔离（该边界由 `tests/t3_contract_test.mjs` 持续守护）。
 
 调试入口：启动参数 `want.parameters.autoNav` 支持 `B_TodayMemory` / `B_DailyComic` / `B_About` / `garden-search` / `garden-tree` / `garden-outline` / `add`，可直接跳转对应页面验证。
 
@@ -137,16 +158,25 @@ design/garden/
 
 ## Mock 数据清单
 
-当前所有数据均为 Mock，统一由 `mock/MockData.ets` 工厂生成，经 Repository 层供页面读取。后续接入真实服务时只需替换 Repository 实现。清单如下，便于准备演示数据与检查覆盖度。
+Mock 数据分两套，分开维护：
 
-### 用户（`buildUser`）
+| 工厂 | 何时生效 | 作用 |
+| --- | --- | --- |
+| `mock/MockData.ets` | 真实数据不可用时的兜底（含普通模式） | 保证任何路径都有内容可显示 |
+| `mock/DemoMockData.ets` | **仅** `DemoModeService.isDemo()` 为 true 时 | 比赛演示用的高密度预置内容 |
+
+两套都经 Repository 层供页面读取；页面的读取代码在两种模式下完全一致，差异只发生在仓库内部。
+
+### 普通模式兜底数据（`MockData.ets`）
+
+**用户（`buildUser`）**
 
 | 字段 | 值 |
 | --- | --- |
 | 昵称 | MoMo |
 | 签名 | 今天也要好好生活呀 |
 
-### 默默状态（`buildCompanion`）
+**默默状态（`buildCompanion`）**
 
 | 字段 | 值 |
 | --- | --- |
@@ -156,7 +186,7 @@ design/garden/
 
 状态机共 6 态（`MoMoState`）：IDLE 闲 / CURIOUS 好奇 / HAPPY 开心 / THINKING 想 / LISTENING 听 / SLEEPING 困；首页菜单"换状态"随机在前 4 态中切换。
 
-### 今日状态（`buildDailyMemory`）
+**今日状态（`buildDailyMemory`）**
 
 - 日期：当天（动态生成）；总结文案 1 条
 - 事件 5 条（L0 演示）：
@@ -171,12 +201,12 @@ design/garden/
 
 - 洞察 8 条（i1–i8）：工作节奏 / 兴趣偏好 / 情绪趋势 / 关系触点 / 身体信号 / 灵感摘要 / 番茄节拍 / 小小成就
 
-### 今日漫画（`buildComic`）
+**今日漫画（`buildComic`）**
 
 - id：`comic-2026`；标题：默默的一天 vol.28；日期：当天；留言：今天也有好好陪你，明天见面的路上记得看一眼窗外的云。
 - 5 页：清晨 / 专注时刻 / 讨论 / 漫画时间 / 晚安，分别使用占位图 `comic_1` ~ `comic_5`
 
-### 长期记忆（`buildMemories`，L2 演示）
+**长期记忆（`buildMemories`，L2 演示）**
 
 | id | 标题 | 日期 | 类型 | 重要度 | 标签 | 关联 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -189,11 +219,63 @@ design/garden/
 | m7 | 听完了《万物生灵》合集 | 2026-10-15 | INTEREST | 2 | 音乐/散步 | — |
 | m8 | 遇见默默 | 2026-10-28 | IMPORTANT | 5 | 默默/生日/重要 | 关联 m4 |
 
-### 花园节点（`buildGardenNodes`）
+**气泡花园布局（`utils/BubbleLayout.ets`，运行时计算）**
 
-8 个节点（`g-node-0` ~ `g-node-7`）对应 m1–m8，在花园模式中的百分比坐标依次为：`(30,46) (52,40) (70,47) (40,56) (62,56) (24,58) (48,64) (78,60)`。
+气泡花园不再使用预置坐标表：布局每次由 `BubbleLayoutUtil.layout(memories, viewportW)` 现算，输入是日期倒序的记忆数组。
 
-### 记忆树（`buildTreeNodes`）
+- **分簇**：按 `MemoryType` 分成 **4 簇**（生活 / 学习 / 目标 / 兴趣，与头部图例同序），空簇不渲染空花。
+  「重要回忆」是**标签**而不是类型（见下节），因此不单独成簇。
+- **配色（语义色板）**：生活 = 橙、学习 = 蓝、目标 = 红、兴趣 = 绿。
+  只维护一个 base 主色，其余两档按固定规则派生，保证四类颜色的对比度关系恒定：
+  - `colorOf` = base，用于图例圆点、小圆点花瓣、花心；
+  - `iconColorOf` = base 压暗到 68%，作为主圆内的图标色；
+  - `bubbleBgOf` = base 与白色按 86% 混合，作为主圆的浅色底。
+  这样「深色图标压在浅色底圆上」的明度差始终成立，改色只需改 base 一处。
+- **布局模型：围绕式花瓣 + 自适应网格，4 簇全部装进一屏（不滚动）**
+  - **花心在 cell 正中，花瓣围绕它排布**（这是"记忆之花"的核心形态）。
+    花瓣位取自标准六角格的邻位，并保证任意两片之间的距离一致。
+  - 一朵花最多呈现 **花心 + 5 片花瓣**（共 6 个完整圆圈）；再多出来的记忆用**同色小实心圆点**
+    沿外圈均匀分布，表示"还在继续生长"。
+  - 全局把可用矩形切成 `gCols × gRows` 个 cell，每簇占一个；4 簇取 **2×2**。
+  - **直径由可用矩形反解**（取宽、高两个约束中更紧的那个），实测这台 377×816vp 的机器上是 **Ø46**。
+    簇内含有小圆点时包络变大，该簇的圆会相应变小——这是"多做出来的记忆不挤掉已有布局"的代价。
+  - 主圆内固定为「类型图标 + 一行 `MM.DD`」（日期统一补零，避免 `11.4` 被读成 `11.24`）。
+- **花瓣位的几何（踩了四次坑，勿凭直觉改）**：
+  - 5 个花瓣位到花心的距离**全相等**，两两最小距离为 `0.866 × 列距`；
+    因此列距下限是 `(直径 + 间隙) / 0.866`，不是 `直径 + 间隙`。
+  - 取满六角格的 6 个邻位**不行**：六角格是蜂窝格，相邻两个邻位之间只有 0.866P，圆会叠住。
+  - 最隐蔽的坑是**混用格单位与笛卡尔单位**：`(0, ±0.866)` 与 `(0.5, ±0.866)` 混在一张表里，
+    会出现"一对邻位刚好、另一对重叠"。现在整张表统一用笛卡尔单位。
+- **不重叠是结构化保证**：`cell 尺寸 = 簇包络 + CELL_SLACK`；`CELL_SLACK` 是必要的——
+  若 cell 宽恰好等于包络，最外侧花瓣会被 `clampInside` 推回零点几 vp，反而与花心贴到负间隙（实测 −0.3vp）。
+- **为什么必须自适应直径**：固定 Ø64 + 一簇一行时，4 簇纵向叠加需 `4 × 300 = 1200vp`，
+  远超可用的 466vp，表现就是「必须滚动 + 圆圈被裁 + 气泡压到下一簇花心」——这三个现象根因是同一个。
+- 布局算法参考 [LVGL 复刻 watchOS 气泡网格](https://lvgl.io/blog/tutorial-recreating-apple-watch-bubble-component) 的错落行思想；未引入其拖拽/惯性/边界压缩（需要自维护定时器，与全仓 `animateTo` 触发式动效体系不一致）。
+
+**「重要回忆」是标签，不是类型**
+
+为把标签圆圈收敛到 4 个，「重要回忆」从 `MemoryType` 降级为 `tags` 里的一个标签：
+
+- 新数据一律写入四类之一，重要性用 `importance >= GOAL_IMPORTANT_IMPORTANCE(5)` + 标签 `重要回忆` 表达；
+- 历史数据（`type == IMPORTANT`）在读取时由 `DataSyncService.migrateType()/migrateTags()` 自动迁移为
+  「目标 + 重要回忆标签 + importance 5」，因此旧记忆不会因为不属于任何一簇而消失；
+- `MemoryType.IMPORTANT = 4` 仅保留用于兼容旧持久化数据，`TYPE_ORDER` 里不再包含它。
+
+**三个真机才暴露的渲染/布局坑（已修，勿回退）**：
+
+1. `ForEach` 的 key 只写类型时，簇大小变化（如切换演示模式）会让 ArkUI **复用旧组件**、把文本与坐标冻结在旧值。key 必须带数量与坐标。
+2. `recomputeBubbleLayout()` 必须**直接读 `MemoryRepository`**，不能读 `this.memories`：页面可能先于 `repoListener` 的 `setState` 渲染，否则出现「气泡是新的、计数是旧的」。
+3. **不要给气泡区的 `Scroll` 加 `expandSafeArea`**：扩展安全区会改变内容坐标原点，导致整组气泡偏移（实测布局算出的 y=150 渲染在 y≈435vp）。当前实现已去掉 Scroll，顶部留白由布局的 `TOP_INSET` 承担。
+4. **固定直径 + 一簇一行会同时引出三个现象**：必须滚动、圆圈被裁、气泡压到下一簇花心。三者根因相同（4 簇纵向叠加 1200vp 远超可用 466vp），修法只有一个：**按可用矩形反解直径**并采用 2×2 网格。
+
+单个气泡由 `components/MemoryBubble.ets` 渲染：纯圆、直径由外部传入、圆内只有图标与日期。
+
+**方形裁切/方形阴影的修法（三层结构，顺序不可颠倒）**：ArkUI 的 `shadow` 与 `border` 都按**外接矩形**绘制、
+不跟随 `borderRadius`。因此只要在圆形之外再叠任何一层"有边框的正方形"，矩形四条边就会露出来。
+本组件的层级是：① 底圆 + `clip(true)`（阴影被裁进圆内，退化为圆环柔光）→ ② 描边圆**单独一层且必须裁剪**
+→ ③ 图标与日期（宽度取圆的 88%，避免触边）。
+
+**记忆树（`buildTreeNodes`）**
 
 ```text
 记忆花园（root）
@@ -204,10 +286,25 @@ design/garden/
 └── 重要回忆：m4 记忆花园第一株花、m8 遇见默默
 ```
 
+### 演示模式数据（`DemoMockData.ets`）
+
+演示数据全部**按「今天 − N 天」的相对日期生成**，因此无论哪天演示，内容都落在最近 14 天内，日历、时间线与大纲排序不会出现空档。
+
+| 内容 | 规模 | 说明 |
+| --- | --- | --- |
+| 长期记忆 | 14 条（m1–m14，跨 14 天） | 五种类型齐全；**m4 固定为「重要回忆」**，因为 `A_Garden` 默认选中该节点 |
+| 今日事件 | 7 条（e1–e7） | 与记忆的 `sourceEvents` 互相引用，经得起现场追问 |
+| 默默的理解 | 9 条 | 「今日状态」页两列网格铺满 |
+| 今日漫画 | 5 页 + 5 段分镜脚本 | 复用 `comic_1`~`comic_5`，同时登记为「已生成」，首页卡片不再空白 |
+| 身份与档案 | 用户「小雨」+ 已完成档案 | 避免进入演示后被档案引导页拦截 |
+| 默默状态 | HAPPY / 元气满满 | 现场展示动作表现 |
+| AI 预制返回 | 总结 / 纠正 / 反馈确认文案 | 演示态秒回，不联网 |
+
 ### 设置默认值（`SettingsService`）
 
 | 项 | 默认值 |
 | --- | --- |
+| 演示模式 | 关（内存态，冷启动永远为关） |
 | 深色模式 | 关 |
 | 大字号 | 关 |
 | 主题色 | #97FFAB |
@@ -229,10 +326,25 @@ design/garden/
 
 `comic_1` ~ `comic_5`（漫画占位图）、`garden_bg`（花园背景，源文件见上文设计资产）、`background` / `foreground`（ layered_image 分层图标）、`icon` / `icon_startwindow` / `startIcon`。
 
+## 测试
+
+无需 DevEco 环境即可运行的静态契约测试（只读源码做断言）：
+
+```bash
+node tests/t3_contract_test.mjs          # 云数据库 schema / ACL / 游客本地模式 / 迁移安全
+node tests/demo_mode_contract_test.mjs   # 演示模式：内存隔离、零持久化、零上云、设置页入口
+node tests/demo_ai_contract_test.mjs     # AI 通路：函数名对齐、游客可调用、演示态短路与降级
+node tests/bubble_layout_contract_test.mjs  # 气泡花园：分簇蜂巢布局、纯圆气泡、旧实现零残留
+```
+
 ## 相关文档
 
+- `项目现状与MVP差距报告.md`：本次改动说明、与 MVP 清单的逐项差距、运维知识保全、技术债登记
+- `MVP与复赛材料清单.md`：应用 MVP 定义、两周开发计划与复赛材料准备清单
 - `../MoMo-DOC/开发笔记参考/`：产品功能、UI 规格、数据与记忆系统、Agent 系统、鸿蒙实现与开发计划
 - `../MoMo-DOC/第一轮提示词/`：第一轮总控 Prompt、全局开发规范（head.md / page.md）与各页面子 Prompt
 - `../MoMo-DOC/迭代用提示词/`：后续 UI 迭代修改规范
 - `../MoMo-DOC/UI参考图/`、`../MoMo-DOC/占位图片/`、`../MoMo-DOC/应用图标/`：设计资产
-- `MVP与复赛材料清单.md`：应用 MVP 定义、两周开发计划与复赛材料准备清单
+
+> 根目录原有的 37 份过程/阶段报告（第一轮、华为云接入、编译修复、3D 花园实验、账号登录等）已归档到本机 `.md-reports-backup/`（该目录不进仓库）。其中仍有用的运维信息（签名、云函数部署、对象类型导入、公开分发）已整理进 `项目现状与MVP差距报告.md`。
+

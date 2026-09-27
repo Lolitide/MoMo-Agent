@@ -7,13 +7,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "sign/momo_debug.p12",
-          "storePassword": "0000001686F659E4BB778D581D508764622C57C46525DC004BE080AF561A6C524CB74A3593A8",
-          "keyAlias": "momo",
-          "keyPassword": "000000162425E81373D4748362C08C8EA6D2DB38F7102BD96C91CBEEBFD9FF7F4CB4DC27C447",
+          "certpath": "C:\\Users\\x2027\\.ohos\\config\\default_MoMo-Agent-lkn_NAUSvN0lvnPqrCWOJidvJqIxPCUFts4QFBfFSOl6os=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001bb01b01edab15658903d1800aab0153cb48daf70abe81f479525c459f5164526dff948d93bc7ca0",
+          "profile": "C:\\Users\\x2027\\.ohos\\config\\default_MoMo-Agent-lkn_NAUSvN0lvnPqrCWOJidvJqIxPCUFts4QFBfFSOl6os=.p7b",
           "signAlg": "SHA256withECDSA",
-          "profile": "sign/momo_debug.p7b",
-          "certpath": "sign/momo_debug.cer"
+          "storeFile": "C:\\Users\\x2027\\.ohos\\config\\default_MoMo-Agent-lkn_NAUSvN0lvnPqrCWOJidvJqIxPCUFts4QFBfFSOl6os=.p12",
+          "storePassword": "0000001bb01b01edab15658903d1800aab0153cb48daf70abe81f479525c459f5164526dff948d93bc7ca0"
         }
       }
     ],

@@ -13,6 +13,9 @@
 /_shots
 /.codegenie
 
+# 根目录过程/阶段报告的本机归档（不进仓库，便于回滚删除）
+/.md-reports-backup/
+
 # AI配置文件（包含API Key，不要提交到Git）
 entry/src/main/resources/rawfile/ai_config.json
 
