@@ -185,8 +185,16 @@ assert.match(settingsSource, /demoSection\(\)/, '设置页缺少演示模式区�
 assert.match(settingsSource, /DemoModeService\.get\(\)\.enable\(\)/, '设置页未接入开启演示模式');
 assert.match(settingsSource, /DemoModeService\.get\(\)\.disable\(\)/, '设置页未接入退出演示模式');
 assert.match(settingsSource, /requestEnableDemo\(\): void/, '开启演示模式缺少二次确认');
-assert.match(settingsSource, /if \(this\.isDemo\) \{\s*Divider\(\)[\s\S]{0,200}重置演示数据/,
+// 「演示条数」与「重置演示数据」都必须被限制在 if (this.isDemo) 区块内
+const demoGuardStart = settingsSource.indexOf('if (this.isDemo) {');
+const demoGuardEnd = settingsSource.indexOf('\n        }', demoGuardStart);
+assert.ok(demoGuardStart >= 0 && demoGuardEnd > demoGuardStart,
+  '设置页的 if (this.isDemo) 区块无法定位');
+const demoGuardBlock = settingsSource.slice(demoGuardStart, demoGuardEnd);
+assert.ok(demoGuardBlock.includes('重置演示数据'),
   '「重置演示数据」未被限制在演示态内显示');
+assert.ok(demoGuardBlock.includes('this.demoCountRow()'),
+  '「演示记忆条数」未被限制在演示态内显示');
 assert.match(settingsSource, /DemoModeService\.get\(\)\.subscribe\(this\.demoListener\)/,
   '设置页未订阅演示模式变化');
 assert.match(settingsSource, /DemoModeService\.get\(\)\.unsubscribe\(this\.demoListener\)/,
@@ -227,4 +235,69 @@ assert.match(demoMockSource, /m14\.tags = \['重要回忆'/,
 assert.doesNotMatch(demoMockSource, /MemoryType\.IMPORTANT/,
   'DemoMockData 仍使用 IMPORTANT 类型：花园只会画 4 类，这类记忆会因为无簇可归而消失');
 
-console.log('演示模式契约检查通过：内存隔离、零持久化、零上云、游客数据边界与设置页入口均符合约定。');
+// ---------------------------------------------------------------------------
+// 10. 演示记忆条数设置（设置页滑杆 → DemoModeService → DemoMockData）
+//     这一项存在的意义：现场需要把花园「调满」来看记忆很多时的形态。
+//     约束仍然是「演示数据不长期保存」——条数本身也只在内存里，冷启动回默认值。
+// ---------------------------------------------------------------------------
+assert.match(demoMockSource, /private static targetCount: number = 14;/,
+  '演示条数默认值应等于手工种子条数（14）：不改动既有演示观感');
+assert.match(demoMockSource, /static readonly MIN_COUNT: number = 4;/,
+  '缺少条数下限（少于 4 条凑不齐 4 个类型簇）');
+assert.match(demoMockSource, /static readonly MAX_COUNT: number = 60;/,
+  '缺少条数上限（上限用于压测花园布局）');
+assert.match(demoMockSource, /static readonly BASE_COUNT: number = 14;/,
+  '缺少手工种子条数常量');
+assert.match(demoMockSource, /static setTargetCount\(n: number\): number \{/,
+  '缺少 setTargetCount()：设置页没有可调入口');
+assert.match(demoMockSource, /Math\.min\(DemoMockData\.MAX_COUNT, Math\.max\(DemoMockData\.MIN_COUNT, Math\.round\(n\)\)\)/,
+  'setTargetCount() 未把入参夹到 [MIN_COUNT, MAX_COUNT]');
+assert.match(demoMockSource, /static getTargetCount\(\): number \{/, '缺少 getTargetCount()');
+assert.match(demoMockSource, /private static extend\(mem: Memory\[\], target: number\): void \{/,
+  '缺少 extend()：条数调大时无法补齐演示记忆');
+assert.match(demoMockSource, /private static trim\(mem: Memory\[\], target: number\): Memory\[\] \{/,
+  '缺少 trim()：条数调小时无法截取演示记忆');
+
+// 条数调到最小时也不能把花园削成残的：必须保住 m4 锚点与四种类型覆盖
+const trimBlock = demoMockSource.match(/private static trim\(mem: Memory\[\], target: number\): Memory\[\] \{([\s\S]*?)\n  \}/)[1];
+assert.match(trimBlock, /sorted\[i\]\.id === 'm4'/,
+  'trim() 未保住 m4：A_Garden 默认高亮节点会消失');
+assert.match(trimBlock, /DemoMockData\.hasType\(kept, types\[t\]\)/,
+  'trim() 未保证四种类型各留一条：花园会少掉一整朵花');
+
+// 补齐的补充记忆必须是确定性的（不用随机数），否则每次进演示模式花园都不一样
+const extendBlock = demoMockSource.match(/private static extend\(mem: Memory\[\], target: number\): void \{([\s\S]*?)\n  \}/)[1];
+assert.ok(!/Math\.random/.test(extendBlock),
+  'extend() 用了随机数：演示花园每次都不一样，无法对比不同条数下的布局');
+
+// 服务层：条数设置必须走 DemoModeService，页面不得直接依赖 mock 层
+assert.match(demoModeSource, /setDemoMemoryCount\(n: number\): number \{/,
+  'DemoModeService 缺少 setDemoMemoryCount()');
+assert.match(demoModeSource, /MemoryRepository\.get\(\)\.refreshDemoData\(\);/,
+  'setDemoMemoryCount() 未重建演示记忆：花园不会立即按新条数重排');
+assert.match(demoModeSource, /demoMemoryTarget\(\): number \{/,
+  'DemoModeService 缺少 demoMemoryTarget()');
+assert.match(demoModeSource, /static minDemoMemoryCount\(\): number \{/,
+  'DemoModeService 缺少条数下限透传');
+assert.match(demoModeSource, /static maxDemoMemoryCount\(\): number \{/,
+  'DemoModeService 缺少条数上限透传');
+
+// 仓库层：refreshDemoData() 在非演示态必须是空操作 —— 绝不能碰真实数据
+assert.match(memorySection, /refreshDemoData\(\): boolean \{\s*if \(!this\.demoActive\) \{\s*return false;\s*\}/,
+  'refreshDemoData() 在非演示态会继续执行：调条数有污染真实记忆的风险');
+assert.match(memorySection, /this\.memories = DemoMockData\.buildMemories\(\);\s*this\.notify\(\);\s*return true;/,
+  'refreshDemoData() 未重建演示记忆并广播');
+
+// 设置页：滑杆只在演示态出现，且松手才生效（拖动过程不能重建整座花园）
+assert.match(settingsSource, /this\.demoCountRow\(\)/,
+  '设置页未渲染演示条数行');
+assert.match(settingsSource, /Slider\(\{[\s\S]{0,200}min: DemoModeService\.minDemoMemoryCount\(\)/,
+  '设置页缺少条数滑杆');
+assert.match(settingsSource, /mode === SliderChangeMode\.End \|\| mode === SliderChangeMode\.Click/,
+  '滑杆未区分拖动与松手：每移动一格都会重建花园');
+assert.match(settingsSource, /DemoModeService\.get\(\)\.setDemoMemoryCount\(this\.demoMemoryTarget\)/,
+  '设置页未把条数写回 DemoModeService');
+assert.match(settingsSource, /aboutToAppear\(\)[\s\S]{0,600}this\.demoMemoryTarget = DemoModeService\.get\(\)\.demoMemoryTarget\(\);/,
+  '设置页未在进入时同步当前条数');
+
+console.log('演示模式契约检查通过：内存隔离、零持久化、零上云、游客数据边界、设置页入口与演示条数设置均符合约定。');

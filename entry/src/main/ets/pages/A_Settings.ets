@@ -16,7 +16,9 @@
  *     演示模式开关经 DemoModeService.enable()/disable() 生效；跳转花园/关于。
  * 【关键类 / 算法】
  *   - A_Settings：设置页组件；clearAll：AlertDialog 二次确认后 MemoryRepository.clearAll()；
- *   - demoSection：演示模式区块（开关 / 重置演示数据 / 身份与联网状态只读说明）。
+ *   - demoSection：演示模式区块（开关 / 演示记忆条数 / 重置演示数据 / 身份与联网状态只读说明）。
+ *   - demoCountRow + applyDemoCount：条数滑杆。拖动只改本地 @State，松手（SliderChangeMode.End/Click）
+ *     才写回 DemoModeService 并重建演示记忆 —— 否则每移动一格都会全量重排整座花园并卡顿。
  * 【参考源】
  *   - MoMo_DOC/UI 参考图（设置页）；iBest-UI 设置行样式
  * ============================================================================
@@ -42,6 +44,8 @@ export struct A_Settings {
   // 演示模式：开关状态 + 演示数据条数（用于在设置页直接说明「有几条演示内容」）
   @State isDemo: boolean = false;
   @State demoCount: number = 0;
+  // 演示记忆条数（滑杆值）：拖动时只改它，松手才落到 DemoModeService
+  @State demoMemoryTarget: number = 14;
   private demoListener: StateListener = () => {
   };
   private scroller: Scroller = ShellState.settingsScroller;
@@ -55,9 +59,11 @@ export struct A_Settings {
 
     this.isDemo = DemoModeService.get().isDemo();
     this.demoCount = DemoModeService.get().demoMemoryCount();
+    this.demoMemoryTarget = DemoModeService.get().demoMemoryTarget();
     this.demoListener = () => {
       this.isDemo = DemoModeService.get().isDemo();
       this.demoCount = DemoModeService.get().demoMemoryCount();
+      this.demoMemoryTarget = DemoModeService.get().demoMemoryTarget();
     };
     DemoModeService.get().subscribe(this.demoListener);
   }
@@ -113,6 +119,76 @@ export struct A_Settings {
   }
 
   @Builder
+  demoCountRow() {
+    Column({ space: 8 }) {
+      Row({ space: 12 }) {
+        SymbolGlyph($r('sys.symbol.list_bullet')).fontSize(Theme.fontSize(22))
+          .fontColor([Theme.BRAND_DEEP])
+        Column({ space: 2 }) {
+          Text('演示记忆条数')
+            .fontSize(Theme.fontSize(16))
+            .fontWeight(FontWeight.Medium)
+            .fontColor(Theme.PRIMARY)
+          Text('拖到更多条数，看记忆花园变满时的样子')
+            .fontSize(Theme.fontSize(11))
+            .fontColor(Theme.TERTIARY)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Text(this.demoMemoryTarget.toString() + ' 条')
+          .fontSize(Theme.fontSize(12))
+          .fontColor(Theme.BRAND_DEEP)
+          .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+          .borderRadius(14)
+          .backgroundColor('#ECFBEF')
+      }
+      .width('100%')
+
+      // 拖动过程只改这一个数字（不重建仓库），松手才真正重排花园 ——
+      // 否则每移动一格都要全量重算布局，现场会明显卡顿。
+      Row({ space: 10 }) {
+        Text(DemoModeService.minDemoMemoryCount().toString())
+          .fontSize(Theme.fontSize(11))
+          .fontColor(Theme.TERTIARY)
+        Slider({
+          value: this.demoMemoryTarget,
+          min: DemoModeService.minDemoMemoryCount(),
+          max: DemoModeService.maxDemoMemoryCount(),
+          step: 1,
+          style: SliderStyle.OutSet
+        })
+          .layoutWeight(1)
+          .selectedColor(Theme.BRAND_DEEP)
+          .trackColor(Theme.LINE)
+          .blockColor(Theme.BRAND_DEEP)
+          .onChange((value: number, mode: SliderChangeMode) => {
+            this.demoMemoryTarget = Math.round(value);
+            if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+              this.applyDemoCount();
+            }
+          })
+        Text(DemoModeService.maxDemoMemoryCount().toString())
+          .fontSize(Theme.fontSize(11))
+          .fontColor(Theme.TERTIARY)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+    }
+    .width('100%')
+    .padding({ left: 18, right: 18, top: 12, bottom: 12 })
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  /** 松手后生效：写回设置并立即重建演示记忆，花园随即按新条数重排 */
+  private applyDemoCount(): void {
+    const applied: number = DemoModeService.get().setDemoMemoryCount(this.demoMemoryTarget);
+    this.demoMemoryTarget = applied;
+    PromptUtil.toast('演示记忆已改为 ' + applied.toString() + ' 条');
+  }
+
+  @Builder
   demoSection() {
     Column({ space: 10 }) {
       Text('演示模式')
@@ -138,6 +214,8 @@ export struct A_Settings {
           }
         })
         if (this.isDemo) {
+          Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
+          this.demoCountRow()
           Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
           SettingNavRow({
             icon: $r('sys.symbol.arrow_clockwise'),

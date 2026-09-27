@@ -55,8 +55,19 @@ assert.match(bubbleLayout, /static layout\(memories: Memory\[\], viewportW: numb
 assert.match(bubbleLayout, /export class BubbleSlot/, 'BubbleSlot 缺失');
 assert.match(bubbleLayout, /export class FlowerCore/, 'FlowerCore 缺失');
 assert.match(bubbleLayout, /export class BubbleLayoutResult/, 'BubbleLayoutResult 缺失');
-assert.ok(!/contentHeight/.test(stripLineComments(bubbleLayout)),
-  '仍存在 contentHeight：气泡视图已改为不滚动，不应再输出内容高度');
+// 【核心契约 0】内容高度语义：「一屏放下」与「向下生长」由布局单向决定，页面不自己猜
+//   contentHeight = 0  → 一屏放下，页面不要套 Scroll（记忆少时保持原有观感）
+//   contentHeight > 0  → 需要滚动，页面据此套 Scroll
+assert.match(bubbleLayout, /contentHeight: number = 0;/,
+  'BubbleLayoutResult 缺少 contentHeight（0=一屏放下，>0=需要滚动的内容高度）');
+assert.match(bubbleLayout, /result\.contentHeight = scroll/,
+  'contentHeight 未由排布模式推导出来');
+assert.match(bubbleLayout, /private static solveD\(gCols: number, gRows: number/,
+  '缺少 solveD()：直径反解必须集中在一处，否则两种模式的预算会各算一遍而互相矛盾');
+assert.match(bubbleLayout, /if \(dOneScreen < BubbleLayoutUtil\.MIN_D\) \{/,
+  '一屏放不下（反解直径低于下限）时应退化为滚动模式，而不是把圆挤到叠在一起');
+assert.match(bubbleLayout, /availH <= 0 表示|availH: number, availH: number\): number/,
+  'solveD 缺少「不限制高度」的滚动模式入口');
 
 for (const constant of ['EDGE_PAD', 'TOP_INSET', 'BOTTOM_RESERVE', 'MAX_D', 'MIN_D', 'GAP',
   'CELL_GAP_X', 'CELL_GAP_Y', 'CELL_SLACK', 'RING_SLOTS', 'CORE_RATIO', 'OUTER_RADIUS',
@@ -82,9 +93,19 @@ assert.match(bubbleLayout, /return Math\.cos\(2 \* Math\.PI \* i \/ BubbleLayout
 assert.match(bubbleLayout, /return Math\.sin\(2 \* Math\.PI \* i \/ BubbleLayoutUtil\.RING_SLOTS\);/,
   '环位纵向偏移必须用 sin(60°×i) 现算');
 
+// 【核心契约 2b】溢出的小圆点必须能自动再往外开一圈
+// 每簇上限 6（环）+ 12（外圈第一圈）= 18 条；超过时必须开第二圈，
+// 否则 (i - RING_SLOTS) % OUTER_COUNT 会把多出来的点叠在同一圈上（互相盖住）
+assert.match(bubbleLayout, /const band: number = Math\.floor\(k2 \/ BubbleLayoutUtil\.OUTER_COUNT\);/,
+  '外圈小圆点未按圈分组：条数超过 18 时会叠在同一圈上');
+assert.match(bubbleLayout, /const r: number = BubbleLayoutUtil\.OUTER_RADIUS \+ band;/,
+  '第 band 圈的半径应为 OUTER_RADIUS + band');
+
 // 【核心契约 3】直径必须自适应，不能写死
-assert.match(bubbleLayout, /let d: number = Math\.min\(budgetW \/ coefW, budgetH \/ coefH\);/,
-  '直径未由可用矩形反解');
+assert.match(bubbleLayout, /let d: number = budgetW \/ coefW;/,
+  '直径未由可用宽度反解');
+assert.match(bubbleLayout, /d = Math\.min\(d, budgetH \/ coefH\);/,
+  '一屏模式下直径必须同时受可用高度约束');
 assert.match(bubbleLayout, /d = Math\.max\(d, BubbleLayoutUtil\.MIN_D\)/,
   '缺少直径下限');
 assert.match(bubbleLayout, /d = Math\.min\(d, BubbleLayoutUtil\.MAX_D\)/,
@@ -191,13 +212,36 @@ assert.match(garden, /BubbleLayoutUtil\.layout\(list, this\.viewportW, this\.vie
   '布局未用仓库快照 list、或未同时传入屏宽屏高');
 assert.match(garden, /MemoryBubble\(\{/, 'A_Garden 未使用 MemoryBubble 组件');
 assert.match(garden, /onAreaChange/, 'A_Garden 缺少 onAreaChange：未拿到真实尺寸就计算布局会导致错位');
-// 气泡区必须不滚动：内容已由布局自适应装进一屏
+// 气泡区：记忆少时不滚动（内容高度==视口，Scroll 滚不动），
+// 记忆多到一屏放不下时由布局给出内容高度，才允许滚动。
+// 【为什么必须由布局决定】固定直径 + 一簇一行时 4 簇远超一屏，表现为
+// 「必须滚动 + 圆圈被裁 + 气泡压到下一簇花心」；反过来在记忆很少时套 Scroll，
+// 又会出现过滚动回弹把圆晃出屏幕。两个分支必须渲染同一份花田。
 const bubbleStart = garden.indexOf('bubbleView() {');
 const bubbleEnd = garden.indexOf('outlineView() {', bubbleStart);
 assert.ok(bubbleStart >= 0 && bubbleEnd > bubbleStart, 'bubbleView() 段落无法定位');
 const bubbleViewBlock = garden.slice(bubbleStart, bubbleEnd);
-assert.ok(!/Scroll\(/.test(bubbleViewBlock),
-  'bubbleView 里仍有 Scroll：直径自适应后 4 簇应装进一屏，出现滚动意味着又回到了「圆圈被裁」的状态');
+assert.match(garden, /bubbleField\(h: number\) \{/,
+  '花田未抽成 @Builder bubbleField()：Scroll 内外的渲染内容会不一致');
+// 顶部不能再用「从头部下沿硬裁」：用户截图指出那条直边很生硬，
+// 现在改为整屏滚动 + linearGradientBlur 让内容化进标题栏与玻璃卡。
+assert.match(bubbleViewBlock, /\.linearGradientBlur\(TOP_FADE_BLUR, \{/,
+  '滚动区缺少顶部线性渐变模糊：内容会在标题栏/玻璃卡下沿被切出硬边');
+assert.match(bubbleViewBlock, /direction: GradientDirection\.Bottom/,
+  '渐变模糊方向必须是自上而下');
+assert.match(bubbleViewBlock, /\[0\.0, BubbleLayoutUtil\.topInset\(\) \/ this\.viewportH\]/,
+  '渐隐止点必须跟着布局的头部预留高度走，否则要么首屏内容被糊、要么卡片下沿仍露硬边');
+assert.ok(!/\.padding\(\{ top: BubbleLayoutUtil\.topInset\(\) \}\)/.test(bubbleViewBlock),
+  '又用 padding 把滚动区裁到头部下沿了：这就是那条硬边的来源');
+assert.equal((bubbleViewBlock.match(/this\.bubbleField\(/g) || []).length, 2,
+  'bubbleView 的两个分支应各渲染一次 bubbleField()');
+const countGuard = bubbleViewBlock.indexOf('if (this.bubbleLayout.contentHeight > 0) {');
+const scrollCall = bubbleViewBlock.indexOf('Scroll() {');
+assert.ok(countGuard >= 0, 'bubbleView 缺少 contentHeight>0 的判断：记忆多时会退回到「圆圈被裁」');
+assert.ok(scrollCall > countGuard,
+  'Scroll 未被 contentHeight>0 包住：记忆少时也会出现不必要的滚动与回弹');
+assert.match(bubbleViewBlock, /\.edgeEffect\(EdgeEffect\.None\)/,
+  '滚动容器未关闭回弹：内容刚好一屏时会抖一下');
 
 // 头部只列 4 种类型
 const headerBlock = garden.match(/gardenHeader\(\) \{([\s\S]*?)\n  \}/)[1];
@@ -211,8 +255,24 @@ assert.match(garden, /ForEach\(this\.bubbleLayout\.cores/,
   '未渲染花心点（cores）');
 assert.match(garden, /\.width\(c\.d\)\s*\n\s*\.height\(c\.d\)/,
   '花心点应按布局给出的 coreD 尺寸绘制（很小的点）');
-assert.match(garden, /if \(s\.mini\) \{/,
-  '未渲染小圆点分支：数量溢出的记忆不会以实心圆点表示');
+
+// 【真机实测坑：ForEach 的 item 生成函数里不能写 if】
+// 小圆点曾经写成 ForEach(bubbleLayout.slots) { if (s.mini) { ... } } 且 key 不含坐标。
+// 结果：切换演示条数后，键不变的那颗小圆点**连分支里的 .position() 都不重算**，
+// 停在上一个条数的位置上；同时本该出现的新位置又缺一颗（实测 24→37 条时多一颗在
+// 旧位置、少一颗在新位置）。现在拆成独立数组 + 带坐标的 key，两者都是必需的。
+assert.match(garden, /@State bubbleMinis: BubbleSlot\[\] = \[\];/,
+  '缺少 bubbleMinis：小圆点必须走独立数组，不能在 ForEach 里用 if 分支');
+assert.match(garden, /ForEach\(this\.bubbleMinis, \(s: BubbleSlot\) => \{/,
+  '小圆点未走独立数组渲染');
+const miniForEach = garden.match(/ForEach\(this\.bubbleMinis[\s\S]*?\n      \}, \(s: BubbleSlot\) => ([^\n]*(?:\n[^\n]*){0,2})/);
+assert.ok(miniForEach, '小圆点的 ForEach 段落无法定位');
+assert.ok(!/if \(s\.mini\)/.test(miniForEach[0]),
+  '小圆点的 ForEach 里又出现了 if 分支：键不变时分支内的属性不会重算');
+assert.match(miniForEach[1], /s\.x\.toFixed\(1\)/,
+  '小圆点的 key 必须带坐标：否则布局一变（条数变化）位置会留在旧值');
+assert.match(miniForEach[1], /s\.y\.toFixed\(1\)/,
+  '小圆点的 key 必须带坐标（y）');
 
 for (const gone of ['gardenView\\(', 'nodePosOf', 'GardenNodeItem', 'GardenNodeMarker', 'bubbleContentH']) {
   assert.doesNotMatch(stripLineComments(garden), new RegExp(gone),

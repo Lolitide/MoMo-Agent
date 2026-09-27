@@ -52,6 +52,20 @@ interface EditSnapshot {
   label: string;
 }
 
+// 滚动模式下的顶部渐隐：内容越往上越模糊，最后"化"进头部玻璃卡与标题栏，
+// 而不是被切出一条生硬直边（用户在截图里指出过这条硬边）。
+//
+// 【为什么止点要按布局的头部预留高度算，而不是拍一个比例】
+//   硬边其实有两处：① 标题栏下沿（内容直接滑到标题文字底下）；② 头部玻璃卡的下沿
+//   （不透明卡片的直线边缘把圆点切成两半）。渐隐区必须**正好覆盖头部那一段**：
+//     - 止点 = TOP_INSET / 屏高（≈0.28）：偏移为 0 时第一排节点最低在 TOP_INSET 处，
+//       所以首屏内容永远落在模糊区之外、保持清晰；
+//     - 中段止点取 0.86×止点（≈卡片下沿 196vp 处）并保留 70% 模糊：圆点刚从卡片下沿
+//       露出来时是"糊着"的，往下 30vp 内迅速变清晰 —— 视觉上就是"从卡片里化出来"。
+const TOP_FADE_BLUR: number = 24;
+/** 卡片下沿处的模糊强度（相对 TOP_FADE_BLUR 的比例）：越高，硬边越不明显 */
+const TOP_FADE_EDGE_RATIO: number = 0.7;
+
 // 气泡渲染项：把「记忆数据」与「布局槽位」绑定在一起。
 // 存在的意义是让 ForEach 遍历一个已经对齐好的数组，而不是在渲染过程中查仓库。
 // keygen 是预先算好的稳定 key：ArkTS 的 ForEach keyGenerator 只允许引用参数本身，
@@ -98,6 +112,11 @@ export struct A_Garden {
   // 已与数据对齐的渲染列表：在 recomputeBubbleLayout() 里一次算好，
   // 避免在 ForEach 内反复查仓库（既低效，又依赖非响应式数据导致刷新不确定）
   @State bubbleItems: BubbleItem[] = [];
+  // 溢出小圆点单独成一个数组，**不要**在 ForEach 里写 if：ArkUI 的 ForEach 一旦在
+  // item 生成函数里带条件分支，键不变时连分支里的属性都不会重算 —— 实测表现为
+  // 「切换演示条数后，某个小圆点还停在上一个条数的位置上，另一些位置则整颗消失」。
+  // 拆成独立数组后，键里再带上坐标，几何一变就必然重建。
+  @State bubbleMinis: BubbleSlot[] = [];
   // 当前选中记忆的 id 副本：ForEach 的 keyGenerator 只能访问参数，
   // 用它把选中态拼进 key，保证选中变化时该气泡重建（焦点环/日期不会滞留）
   @State bubbleSelectedId: string = '';
@@ -110,8 +129,9 @@ export struct A_Garden {
   private repoListener: () => void = () => {
   };
   private panBase: number = 196;
-  // 气泡视图已改为不滚动（4 簇自适应装进一屏），但 MainPage 仍把这个 Scroller 交给
-  // HdsNavigation.bindToScrollable 做标题栏渐变模糊，因此保留引用以免破坏标题栏效果。
+  // 气泡视图自己按 contentHeight 决定要不要滚动（记忆多时用局部 Scroll），
+  // 但 MainPage 仍把这个 Scroller 交给 HdsNavigation.bindToScrollable 做标题栏渐变模糊，
+  // 因此保留引用以免破坏标题栏效果。
   private gardenScroller: Scroller = ShellState.gardenScroller;
   private outlineScroller: Scroller = ShellState.gardenOutlineScroller;
 
@@ -188,7 +208,13 @@ export struct A_Garden {
           }
         }
       } else {
-        const first = this.repo.getById('m4');
+        // 默认高亮 m4（演示态那条「重要回忆」）。演示条数被调小后 m4 可能不在花园里，
+        // 此时退化为高亮最新的一条，保证首屏总有焦点（否则看起来像「什么都没选中」）。
+        let first: Memory | null = this.repo.getById('m4');
+        if (first === null) {
+          const all: Memory[] = this.sortedMemories();
+          first = all.length > 0 ? all[0] : null;
+        }
         if (first !== null) {
           // 首屏不自动弹详情浮层：气泡花园的下半屏会被浮层遮住，先让用户看到完整花簇。
           // 仅高亮默认节点，点任意气泡/花心再打开详情。
@@ -237,9 +263,11 @@ export struct A_Garden {
     // 布局同时依赖屏宽与屏高：直径由可用矩形自适应反解，目标是 4 簇全部装进一屏
     this.bubbleLayout = BubbleLayoutUtil.layout(list, this.viewportW, this.viewportH);
     const items: BubbleItem[] = [];
+    const minis: BubbleSlot[] = [];
     for (let i = 0; i < this.bubbleLayout.slots.length; i++) {
       const slot = this.bubbleLayout.slots[i];
       if (slot.mini) {
+        minis.push(slot);
         continue;
       }
       const m = this.repo.getById(slot.memoryId);
@@ -248,6 +276,7 @@ export struct A_Garden {
       }
     }
     this.bubbleItems = items;
+    this.bubbleMinis = minis;
     this.syncBubbleSelection();
   }
 
@@ -468,7 +497,8 @@ export struct A_Garden {
   /**
    * 气泡花园：按 4 种记忆类型分簇，每簇是一朵「生长中的花」。
    * 花心与主圆显示图标 + 简短日期；数量溢出时用同色小实心圆点补位。
-   * 布局由 BubbleLayoutUtil 计算，内容高度由布局给出 → 本区域与记忆树一样可自由纵向滚动。
+   * 布局由 BubbleLayoutUtil 计算：contentHeight=0 时正好一屏放下（不滚动），
+   * 记忆变多、一屏放不下时布局会给出内容高度，这里才套 Scroll 让花园向下生长。
    */
   @Builder
   bubbleView() {
@@ -480,55 +510,39 @@ export struct A_Garden {
         .opacity(0.96)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
-      // 【不滚动】4 簇由 BubbleLayoutUtil 自适应排进一屏：
-      // 直径由可用矩形反解得出，因此不需要 Scroll，也就不会出现圆圈被裁切。
-      // 真机实测教训：固定直径 + 一簇一行时，4 簇纵向叠加会远超可用高度，
-      // 表现为「必须滚动 + 圆圈被裁 + 气泡压到下一簇花心」。
-      Stack({ alignContent: Alignment.TopStart }) {
-        // 花心：很小的实心圆点（**不承载记忆**，因此不会盖住任何圆的内容）。
-        // 位置在簇正中，记忆圆环绕它排布。
-        ForEach(this.bubbleLayout.cores, (c: FlowerCore) => {
-          Column()
-            .width(c.d)
-            .height(c.d)
-            .borderRadius(Theme.RADIUS_PILL)
-            .backgroundColor(MemoryTypeUtil.colorOf(c.type))
-            .position({ x: c.x - c.d / 2, y: c.y - c.d / 2 })
-            .zIndex(1)
-        // key 含类型与坐标：避免簇变化时 ArkUI 复用旧组件（真机实测过位置冻结）
-        }, (c: FlowerCore) => 'c|' + c.type.toString()
-          + '|' + c.x.toFixed(1) + ',' + c.y.toFixed(1))
-
-        // 小圆点：同色实心，纯装饰（表示"还有更多同类记忆"，不承载具体内容）
-        ForEach(this.bubbleLayout.slots, (s: BubbleSlot) => {
-          if (s.mini) {
-            Column()
-              .width(s.d)
-              .height(s.d)
-              .borderRadius(Theme.RADIUS_PILL)
-              .backgroundColor(MemoryTypeUtil.colorOf(s.type))
-              .opacity(0.88)
-              .position({ x: s.x - s.d / 2, y: s.y - s.d / 2 })
-              .zIndex(1)
-          }
-        }, (s: BubbleSlot) => 'm|' + s.type.toString() + '|' + s.order.toString())
-
-        // 主圆：图标 + 简短日期，可点击进详情
-        ForEach(this.bubbleItems, (item: BubbleItem) => {
-          MemoryBubble({
-            memory: item.memory,
-            d: item.slot.d,
-            selected: this.selectedMemory !== null && this.selectedMemory.id === item.memory.id,
-            onPick: (mm: Memory) => {
-              this.selectMemory(mm);
-            }
-          })
-            .position({ x: item.slot.x - item.slot.d / 2, y: item.slot.y - item.slot.d / 2 })
-            .zIndex(this.selectedMemory !== null && this.selectedMemory.id === item.memory.id ? 5 : 2)
-        }, (item: BubbleItem) => item.keygen)
+      // 【要不要滚动由布局决定】记忆少时 4 簇自适应排进一屏：contentHeight=0，
+      // 内容高度 == 视口高度，Scroll 滚不动，观感与「纯 Stack」完全一致；
+      // 某簇超过一圈（6 个）后包络从 2 个列距变 4 个列距、2 列放不下，
+      // 布局退化为单列并给出 contentHeight>0，此时才真正可滚动。
+      //
+      // 【顶部为什么不用硬裁】早先为了不让花压到标题文字，把 Scroll 从头部下沿裁掉，
+      // 结果是上滑时圆点被切出一条生硬的直边（用户截图指出）。现在改成：
+      // 滚动区铺满整屏，靠 linearGradientBlur 让内容越靠上越模糊、自然消失在标题栏里。
+      // 头部玻璃卡本身是不透明的，会盖住它下方的内容，所以真正需要"渐隐"的只有标题栏那一条。
+      // 真机实测教训：固定直径 + 一簇一行时 4 簇纵向叠加远超可用高度，
+      // 表现为「必须滚动 + 圆圈被裁 + 气泡压到下一簇花心」——所以直径必须由布局反解。
+      if (this.bubbleLayout.contentHeight > 0) {
+        Scroll() {
+          this.bubbleField(this.bubbleLayout.contentHeight)
+        }
+        .width('100%')
+        .height('100%')
+        .scrollBar(BarState.Off)
+        // 关掉回弹：内容刚好一屏时也不会因为过滚动抖一下
+        .edgeEffect(EdgeEffect.None)
+        // fractionStops 的每一项是 [模糊强度, 位置]，位置按屏高归一化：
+        // 顶部全模糊 → 卡片下沿附近仍保留 70% → 头部预留高度处完全不模糊
+        .linearGradientBlur(TOP_FADE_BLUR, {
+          fractionStops: [
+            [1.0, 0.0],
+            [TOP_FADE_EDGE_RATIO, BubbleLayoutUtil.topInset() / this.viewportH * 0.86],
+            [0.0, BubbleLayoutUtil.topInset() / this.viewportH]
+          ],
+          direction: GradientDirection.Bottom
+        })
+      } else {
+        this.bubbleField(this.viewportH)
       }
-      .width('100%')
-      .height('100%')
 
       this.gardenHeader()
 
@@ -541,6 +555,62 @@ export struct A_Garden {
     }
     .width('100%')
     .height('100%')
+  }
+
+  /**
+   * 花园的「花田」本体：花心点 + 记忆主圆 + 溢出小圆点。
+   * 抽成 @Builder 是因为它要么直接放在 Stack 里（一屏放下），要么放进 Scroll 里，
+   * 两种容器必须渲染完全相同的内容 —— 否则早就踩过的「节点被裁/位置漂移」会重演。
+   * 坐标一律用**屏幕坐标**（布局的 originY 已含头部下沿），因此两种容器都是铺满整屏、
+   * 原点在屏幕左上，不需要任何偏移换算。
+   */
+  @Builder
+  bubbleField(h: number) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // 花心：很小的实心圆点（**不承载记忆**，因此不会盖住任何圆的内容）。
+      // 位置在簇正中，记忆圆环绕它排布。
+      ForEach(this.bubbleLayout.cores, (c: FlowerCore) => {
+        Column()
+          .width(c.d)
+          .height(c.d)
+          .borderRadius(Theme.RADIUS_PILL)
+          .backgroundColor(MemoryTypeUtil.colorOf(c.type))
+          .position({ x: c.x - c.d / 2, y: c.y - c.d / 2 })
+          .zIndex(1)
+      // key 含类型与坐标：避免簇变化时 ArkUI 复用旧组件（真机实测过位置冻结）
+      }, (c: FlowerCore) => 'c|' + c.type.toString()
+        + '|' + c.x.toFixed(1) + ',' + c.y.toFixed(1))
+
+      // 小圆点：同色实心，纯装饰（表示"还有更多同类记忆"，不承载具体内容）。
+      // 用独立数组 + 带坐标的 key：条数一变，坐标变、key 变、组件必然重建。
+      ForEach(this.bubbleMinis, (s: BubbleSlot) => {
+        Column()
+          .width(s.d)
+          .height(s.d)
+          .borderRadius(Theme.RADIUS_PILL)
+          .backgroundColor(MemoryTypeUtil.colorOf(s.type))
+          .opacity(0.88)
+          .position({ x: s.x - s.d / 2, y: s.y - s.d / 2 })
+          .zIndex(1)
+      }, (s: BubbleSlot) => 'm|' + s.type.toString()
+        + '|' + s.x.toFixed(1) + ',' + s.y.toFixed(1) + ',' + s.d.toFixed(1))
+
+      // 主圆：图标 + 简短日期，可点击进详情
+      ForEach(this.bubbleItems, (item: BubbleItem) => {
+        MemoryBubble({
+          memory: item.memory,
+          d: item.slot.d,
+          selected: this.selectedMemory !== null && this.selectedMemory.id === item.memory.id,
+          onPick: (mm: Memory) => {
+            this.selectMemory(mm);
+          }
+        })
+          .position({ x: item.slot.x - item.slot.d / 2, y: item.slot.y - item.slot.d / 2 })
+          .zIndex(this.selectedMemory !== null && this.selectedMemory.id === item.memory.id ? 5 : 2)
+      }, (item: BubbleItem) => item.keygen)
+    }
+    .width('100%')
+    .height(h)
   }
 
   @Builder

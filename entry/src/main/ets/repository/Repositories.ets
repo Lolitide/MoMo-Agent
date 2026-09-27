@@ -283,9 +283,25 @@ export class MemoryRepository {
   }
 
   restoreSamples(): void {
-    // 演示态下「恢复示例数据」应恢复成演示种子（14 条），而不是普通 Mock 的 8 条
+    // 演示态下「恢复示例数据」应恢复成演示种子（条数由设置页的演示条数决定），
+    // 而不是普通 Mock 的 8 条
     this.memories = this.demoActive ? DemoMockData.buildMemories() : MockData.buildMemories();
     this.notify();
+  }
+
+  /**
+   * 演示态下按当前设置的条数重建演示记忆（设置页拖动「演示记忆条数」后调用）。
+   * 【为什么必须单独开一个方法】restoreSamples() 在非演示态会把真实记忆替换成示例数据，
+   * 而本方法在非演示态是**空操作** —— 调条数绝不能碰真实数据。
+   * 非演示态只把数字记在 DemoMockData 里，等下次 enable() 生效。
+   */
+  refreshDemoData(): boolean {
+    if (!this.demoActive) {
+      return false;
+    }
+    this.memories = DemoMockData.buildMemories();
+    this.notify();
+    return true;
   }
 
   subscribe(cb: RepoListener): void {

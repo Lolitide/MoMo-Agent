@@ -26,9 +26,11 @@
  *   - 后置：每次调用返回全新实例，调用方可安全修改（深拷贝语义）。
  *
  * 【关键约定】
- *   - 记忆 id 固定从 m1 连续编号到 m14，且 m4 为「重要回忆」：
+ *   - 记忆基数：手工编写 14 条种子（m1..m14，m4 为「重要回忆」）：
  *     A_Garden.ets 在无 pendingFocus 时会 getById('m4') 作为默认选中节点，
  *     因此演示态必须保留 m4 且它应是一条适合当场讲解的重要回忆。
+ *   - 演示条数可在设置页调节（MIN_COUNT..MAX_COUNT）：不足 14 条时按日期倒序截取，
+ *     超过 14 条时由 extend() 确定性补齐（id 为 x1、x2……），方便现场放大/缩小花园。
  *   - 记忆顺序在气泡花园里决定「同类型花瓣的绽放次序」（按日期倒序参与布局）。
  *
  * 【参考源】
@@ -38,8 +40,8 @@
  */
 import { DateUtil } from '../utils/DateUtil';
 import {
-  Comic, ComicPage, CompanionState, DailyMemory, EventItem, InsightItem,
-  Memory, MemoryTreeNode, MemoryType, MoMoState, PersonalityProfile, User
+  Comic, ComicPage, CompanionState, DailyMemory, EventItem, IMPORTANT_MEMORY_TAG,
+  InsightItem, Memory, MemoryTreeNode, MemoryType, MoMoState, PersonalityProfile, User
 } from '../model/Models';
 
 // 演示态漫画分镜：字段与 CloudFunctionService.ComicPanel 的结构保持一致
@@ -53,6 +55,33 @@ export interface ComicPanelLike {
 }
 
 export class DemoMockData {
+  /**
+   * 演示记忆条数（设置页可调）。
+   * 默认 = BASE_COUNT（14 条）：与加入本设置之前完全一致，不改动既有演示观感。
+   * 上限放到 60 条，是为了能现场观察「记忆很多时花园会变成什么样」。
+   * 放在静态字段上，是因为生成逻辑本身仍应留在 mock 层，UI 只负责改这一个数字。
+   */
+  private static targetCount: number = 14;
+  /** 条数上下限：少于 4 条凑不齐 4 个类型簇；上限用于压测布局 */
+  static readonly MIN_COUNT: number = 4;
+  static readonly MAX_COUNT: number = 60;
+  /** 基础种子（手工编写）的条数 */
+  static readonly BASE_COUNT: number = 14;
+
+  /**
+   * 设置演示记忆条数并返回实际生效值（会夹到 [MIN_COUNT, MAX_COUNT]）。
+   * 调用方（设置页）改完后需要触发一次仓库重算，花园才会刷新。
+   */
+  static setTargetCount(n: number): number {
+    const v: number = Math.min(DemoMockData.MAX_COUNT, Math.max(DemoMockData.MIN_COUNT, Math.round(n)));
+    DemoMockData.targetCount = v;
+    return v;
+  }
+
+  static getTargetCount(): number {
+    return DemoMockData.targetCount;
+  }
+
   // ==================== 身份与状态 ====================
 
   /**
@@ -125,8 +154,9 @@ export class DemoMockData {
   // ==================== L2：长期记忆（14 条） ====================
 
   /**
-   * 演示用长期记忆：14 条、跨最近 14 天、五种类型齐全。
+   * 演示用长期记忆：基数 14 条、跨最近 14 天、四个类型齐全（m4 额外带「重要回忆」标签）。
    * 日期由「今天 - offsetDays」动态生成，因此演示当天永远有内容且日历可点。
+   * 实际条数受设置页的 targetCount 影响：多于 14 条补齐、少于 14 条截取。
    */
   static buildMemories(): Memory[] {
     const mem: Memory[] = [];
@@ -181,7 +211,9 @@ export class DemoMockData {
     m7.tags = ['音乐', '散步'];
     m7.sourceEvents = ['e5'];
 
-    const m8 = DemoMockData.mk('m8', '遇见默默', 10, MemoryType.GOAL, 5);
+    // 日期必须与 m4 错开：m4 与 m8 都曾用 offsetDays=10，花园里会出现两颗都写着
+    // 「09.17」的圆，看起来像重复渲染的 bug（用户在截图里指出过）。
+    const m8 = DemoMockData.mk('m8', '遇见默默', 9, MemoryType.GOAL, 5);
     m8.summary = '一颗种子决定住在你的手机里。';
     m8.content = '你给默默起了名字，说好要互相陪伴。默默把这天当作自己的生日，'
       + '也是从这天开始，你的日常有了第二双眼睛在看着。';
@@ -230,7 +262,144 @@ export class DemoMockData {
     m14.relatedMemoryIds = ['m1', 'm9', 'm10'];
 
     mem.push(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14);
+
+    // 设置页把演示条数调大时，用确定性生成的补充记忆把数量补齐（见 extend()）
+    if (DemoMockData.targetCount > mem.length) {
+      DemoMockData.extend(mem, DemoMockData.targetCount);
+      return mem;
+    }
+    // 调小时按日期倒序保留前 N 条（花园本身就是按时间倒序展示的）
+    if (DemoMockData.targetCount < mem.length) {
+      return DemoMockData.trim(mem, DemoMockData.targetCount);
+    }
     return mem;
+  }
+
+  /**
+   * 截取到 targetCount 条。三步走，保证「条数变少也不会变成残缺的花园」：
+   *   1) 锚点：保住 m4 —— A_Garden 无 pendingFocus 时 getById('m4') 作为默认高亮节点；
+   *   2) 四种类型各保一条最新的（GOAL 由 m4 代表）—— 否则花园会少掉一整朵花；
+   *   3) 其余按日期倒序补齐（花园本身就是按时间倒序展示的）。
+   */
+  private static trim(mem: Memory[], target: number): Memory[] {
+    const sorted: Memory[] = mem.slice();
+    sorted.sort((a: Memory, b: Memory) => DemoMockData.byDateDesc(a, b));
+    const kept: Memory[] = [];
+
+    // 1) 锚点
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].id === 'm4') {
+        kept.push(sorted[i]);
+        break;
+      }
+    }
+
+    // 2) 类型覆盖
+    const types: MemoryType[] = [
+      MemoryType.LIFE, MemoryType.STUDY, MemoryType.GOAL, MemoryType.INTEREST
+    ];
+    for (let t = 0; t < types.length; t++) {
+      if (kept.length >= target) {
+        break;
+      }
+      if (DemoMockData.hasType(kept, types[t])) {
+        continue;
+      }
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i].type === types[t]) {
+          kept.push(sorted[i]);
+          break;
+        }
+      }
+    }
+
+    // 3) 按日期倒序补齐
+    for (let i = 0; i < sorted.length && kept.length < target; i++) {
+      if (!DemoMockData.hasId(kept, sorted[i].id)) {
+        kept.push(sorted[i]);
+      }
+    }
+
+    kept.sort((a: Memory, b: Memory) => DemoMockData.byDateDesc(a, b));
+    return kept;
+  }
+
+  private static hasType(list: Memory[], type: MemoryType): boolean {
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].type === type) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static hasId(list: Memory[], id: string): boolean {
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 补齐到 targetCount 条。
+   * 生成规则**完全确定**（不用随机数）：id 为 `x{N}`、类型按 4 类轮转、
+   * 日期 = 今天 − (BASE_COUNT + N) 天 —— 因此同一个条数每次得到完全相同的花园，
+   * 便于对比不同条数下的布局表现，也不会和手工种子的日期撞车。
+   */
+  private static extend(mem: Memory[], target: number): void {
+    let n: number = 1;
+    while (mem.length < target) {
+      const type: MemoryType = DemoMockData.typeOf(n);
+      // 每 7 条中安排 1 条重要回忆（importance 5 + 标签），贴近真实分布
+      const important: boolean = n % 7 === 0;
+      const m = DemoMockData.mk('x' + n.toString(),
+        DemoMockData.topicOf(n), DemoMockData.BASE_COUNT + n, type, important ? 5 : 2);
+      m.summary = DemoMockData.summaryOf(n);
+      m.content = m.summary;
+      m.tags = important ? [IMPORTANT_MEMORY_TAG, '补充'] : ['补充'];
+      mem.push(m);
+      n++;
+    }
+  }
+
+  /** 补充记忆的类型：按 生活/学习/目标/兴趣 轮转 */
+  private static typeOf(n: number): MemoryType {
+    const k: number = n % 4;
+    if (k === 1) {
+      return MemoryType.LIFE;
+    } else if (k === 2) {
+      return MemoryType.STUDY;
+    } else if (k === 3) {
+      return MemoryType.GOAL;
+    }
+    return MemoryType.INTEREST;
+  }
+
+  /** 补充记忆的题材池（轮转取用，保证可读且不重复） */
+  private static topicOf(n: number): string {
+    const pool: string[] = [
+      '早起后先给自己泡了杯茶', '把桌面的线理了一遍', '中午出门晒了十分钟太阳',
+      '看完了一个讲设计的短片', '把上周的笔记整理成了清单', '尝试了一条新的散步路线',
+      '给朋友回了一封长消息', '把手机的提醒关掉了一整天', '读完了一本书的最后一节',
+      '在楼下遇到了一只很亲人的猫', '把待办里的三件小事清掉了', '晚饭做得比平时简单',
+      '听了一张很舒服的专辑', '把阳台的花浇了一遍', '在地铁上记下了两个灵感',
+      '给自己留了半小时发呆', '把旧照片整理进了一个相册', '试着早睡了一次',
+      '把常用的工具换成了更顺手的', '走了一段没有走过的路'
+    ];
+    return pool[(n - 1) % pool.length];
+  }
+
+  private static summaryOf(n: number): string {
+    return '这是第 ' + n.toString() + ' 条补充记录，用来观察记忆变多时花园的布局。';
+  }
+
+  private static byDateDesc(a: Memory, b: Memory): number {
+    if (a.date === b.date) {
+      return 0;
+    }
+    return a.date < b.date ? 1 : -1;
   }
 
   /**

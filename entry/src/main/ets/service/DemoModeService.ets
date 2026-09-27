@@ -5,6 +5,8 @@
  * 【用途】演示模式的唯一开关与事务协调者。
  *   开启时把 Memory / Event / Comic 三个仓库切到「演示内存区」，并暂停游客数据落盘；
  *   关闭时按逆序逐层还原，演示期间产生的任何数据一律丢弃。
+ *   另提供「演示记忆条数」设置（设置页滑杆）：只改内存里的演示种子数量，
+ *   用于现场放大/缩小记忆花园，观察记忆很多时的形态。
  *
  * 【设计原则（三条硬约束）】
  *   1. 零持久化：本文件绝不读写 Preferences、绝不落盘。演示数据只活在内存里，
@@ -37,6 +39,7 @@ import { Logger } from '../utils/Logger';
 import { StateListener } from './Services';
 import { MemoryRepository, EventRepository, ComicRepository } from '../repository/Repositories';
 import { DataSyncService } from './DataSyncService';
+import { DemoMockData } from '../mock/DemoMockData';
 
 export class DemoModeService {
   private static readonly TAG = 'DemoModeService';
@@ -145,6 +148,37 @@ export class DemoModeService {
   /** 演示数据条数（设置页展示用，避免页面直接依赖 mock 层） */
   demoMemoryCount(): number {
     return MemoryRepository.get().isDemo() ? MemoryRepository.get().getAll().length : 0;
+  }
+
+  // ==================== 演示条数设置 ====================
+
+  /** 条数下限（透传 mock 层约束，设置页滑杆直接用） */
+  static minDemoMemoryCount(): number {
+    return DemoMockData.MIN_COUNT;
+  }
+
+  /** 条数上限 */
+  static maxDemoMemoryCount(): number {
+    return DemoMockData.MAX_COUNT;
+  }
+
+  /** 当前设置的演示条数（非演示态也保留，便于下次开启直接生效） */
+  demoMemoryTarget(): number {
+    return DemoMockData.getTargetCount();
+  }
+
+  /**
+   * 设置演示记忆条数：夹到 [MIN_COUNT, MAX_COUNT] 后写回 mock 层，
+   * 若当前正处于演示态，立刻重建演示记忆并广播一次，花园随即按新条数重排。
+   *
+   * 【为什么不落盘】条数本身也属于演示设置：冷启动回到默认值，
+   * 与「演示数据不长期保存」的约定一致（本文件依旧零 Preferences 读写）。
+   */
+  setDemoMemoryCount(n: number): number {
+    const v: number = DemoMockData.setTargetCount(n);
+    MemoryRepository.get().refreshDemoData();
+    this.notify();
+    return v;
   }
 
   private notify(): void {
