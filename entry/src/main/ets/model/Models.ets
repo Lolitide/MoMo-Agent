@@ -91,22 +91,6 @@ export class PersonalityProfile {
   version: number = 1;
 }
 
-export enum CheckInGuideStep {
-  PROFILE_REQUIRED = 'PROFILE_REQUIRED',
-  CHECKIN_READY = 'CHECKIN_READY',
-  CHECKIN_INPUT = 'CHECKIN_INPUT',
-  SUMMARY_READY = 'SUMMARY_READY',
-  COMIC_READY = 'COMIC_READY',
-  GARDEN_SEEDED = 'GARDEN_SEEDED',
-  COMPLETED = 'COMPLETED'
-}
-
-export class CheckInGuideState {
-  guideVersion: number = 1;
-  currentStep: CheckInGuideStep = CheckInGuideStep.PROFILE_REQUIRED;
-  completedAt: number = 0;
-}
-
 export class EventItem {
   id: string = '';
   title: string = '';

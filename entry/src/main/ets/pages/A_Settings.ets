@@ -443,14 +443,14 @@ export struct A_Settings {
                 title: '陪伴档案',
                 desc: '调整语气、节奏和漫画风格',
                 onTap: () => {
-                  router.pushUrl({ url: 'pages/OnboardingProfilePage' });
+                  AppRouter.push(RouteName.ONBOARDING_PROFILE);
                 }
               })
               Divider().color(Theme.LINE).strokeWidth(0.6).margin({ left: 52, right: 18 })
               SettingNavRow({
                 icon: $r('sys.symbol.arrow_clockwise'),
-                title: '重新体验首次打卡',
-                desc: '退出登录，从登录和档案设置重新开始',
+                title: '重新体验首次引导',
+                desc: '退出登录，从登录页重新走一遍引导',
                 onTap: () => {
                   OnboardingService.get().getCurrentUserId().then((userId) => {
                     OnboardingService.get().restartFirstExperience(userId).then(() => {

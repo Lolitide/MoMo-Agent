@@ -1,13 +1,32 @@
+/*
+ * ============================================================================
+ * 文件名：service/OnboardingService.ets
+ * ============================================================================
+ * 【用途】首次体验相关的本地持久化（Preferences 'momo_onboarding_v1'）：
+ *   - 陪伴档案（PersonalityProfile）读写，按用户 ID 分键存储；
+ *   - 「重新体验首次打卡」所需的重置与强制登录标记（FORCE_LOGIN_KEY）。
+ * 【前置条件 / 假设】
+ *   - 依赖：@ohos.data.preferences、AuthService、model/Models；
+ *   - 假设：userId 为空时所有写操作安全跳过、读操作返回默认值；
+ *   - 打卡引导（CheckInGuideStep）已随首次教程一起移除，档案之外不再有引导状态。
+ * 【输入 / 输出（后置条件）】
+ *   - 输入：getCurrentUserId / loadProfile / saveProfile / restartFirstExperience /
+ *     consumeForceLogin / profileToUser；
+ *   - 输出：档案读写成败；restartFirstExperience 后档案被删除且下次启动强制登录页。
+ * 【关键类 / 算法】
+ *   - 单例；profile 以 JSON 字符串存入 Preferences，读取时逐字段兜底默认值。
+ * 【参考源】
+ *   - DevEco Preferences 文档；repository/Repositories.ets 的 UserRepository
+ * ============================================================================
+ */
 import preferences from '@ohos.data.preferences';
-import { CheckInGuideState, CheckInGuideStep, PersonalityProfile, User } from '../model/Models';
+import { PersonalityProfile, User } from '../model/Models';
 import { AuthService } from './auth/AuthService';
 
 export class OnboardingService {
   private static instance: OnboardingService | null = null;
   private static readonly PREFS_NAME = 'momo_onboarding_v1';
   private static readonly PROFILE_PREFIX = 'profile_';
-  private static readonly GUIDE_PREFIX = 'guide_';
-  private static readonly PENDING_PREFIX = 'pending_';
   private static readonly FORCE_LOGIN_KEY = 'force_login';
   private authService: AuthService = AuthService.get();
 
@@ -56,88 +75,11 @@ export class OnboardingService {
     await prefs.flush();
   }
 
-  async loadGuide(userId: string): Promise<CheckInGuideState> {
-    const state = new CheckInGuideState();
-    if (!userId) {
-      return state;
-    }
-    try {
-      const prefs = await preferences.getPreferences(getContext(this), OnboardingService.PREFS_NAME);
-      const raw = await prefs.get(OnboardingService.GUIDE_PREFIX + userId, '') as string;
-      if (!raw) {
-        return state;
-      }
-      const value = JSON.parse(raw) as CheckInGuideState;
-      state.guideVersion = value.guideVersion || 1;
-      state.currentStep = value.currentStep || CheckInGuideStep.CHECKIN_READY;
-      state.completedAt = value.completedAt || 0;
-      return state;
-    } catch (err) {
-      console.error('读取打卡引导状态失败', err);
-      return state;
-    }
-  }
-
-  async saveGuide(userId: string, state: CheckInGuideState): Promise<void> {
-    if (!userId) {
-      return;
-    }
-    const prefs = await preferences.getPreferences(getContext(this), OnboardingService.PREFS_NAME);
-    await prefs.put(OnboardingService.GUIDE_PREFIX + userId, JSON.stringify(state));
-    await prefs.flush();
-  }
-
-  async savePendingCheckIn(userId: string, text: string): Promise<void> {
-    if (!userId) {
-      return;
-    }
-    const prefs = await preferences.getPreferences(getContext(this), OnboardingService.PREFS_NAME);
-    await prefs.put(OnboardingService.PENDING_PREFIX + userId, text);
-    await prefs.flush();
-  }
-
-  async loadPendingCheckIn(userId: string): Promise<string> {
-    if (!userId) {
-      return '';
-    }
-    try {
-      const prefs = await preferences.getPreferences(getContext(this), OnboardingService.PREFS_NAME);
-      return await prefs.get(OnboardingService.PENDING_PREFIX + userId, '') as string;
-    } catch (err) {
-      console.error('读取待生成打卡失败', err);
-      return '';
-    }
-  }
-
-  async clearPendingCheckIn(userId: string): Promise<void> {
-    if (!userId) {
-      return;
-    }
-    const prefs = await preferences.getPreferences(getContext(this), OnboardingService.PREFS_NAME);
-    await prefs.delete(OnboardingService.PENDING_PREFIX + userId);
-    await prefs.flush();
-  }
-
-  async setGuideStep(userId: string, step: CheckInGuideStep): Promise<CheckInGuideState> {
-    const state = await this.loadGuide(userId);
-    state.currentStep = step;
-    state.completedAt = step === CheckInGuideStep.COMPLETED ? Date.now() : 0;
-    await this.saveGuide(userId, state);
-    return state;
-  }
-
-  async resetGuide(userId: string): Promise<void> {
-    const state = new CheckInGuideState();
-    state.currentStep = CheckInGuideStep.CHECKIN_READY;
-    await this.saveGuide(userId, state);
-  }
-
+  // 清空档案与登录态：下次进入时从登录页重新走一遍首次体验
   async restartFirstExperience(userId: string): Promise<void> {
     const prefs = await preferences.getPreferences(getContext(this), OnboardingService.PREFS_NAME);
     if (userId) {
       await prefs.delete(OnboardingService.PROFILE_PREFIX + userId);
-      await prefs.delete(OnboardingService.GUIDE_PREFIX + userId);
-      await prefs.delete(OnboardingService.PENDING_PREFIX + userId);
     }
     await prefs.put(OnboardingService.FORCE_LOGIN_KEY, true);
     await prefs.flush();

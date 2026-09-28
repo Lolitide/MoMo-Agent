@@ -1,7 +1,6 @@
 {
   "src": [
     "pages/MainPage",
-    "pages/OnboardingProfilePage",
     "pages/LoginPage"
   ]
 }

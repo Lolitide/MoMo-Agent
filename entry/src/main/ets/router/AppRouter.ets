@@ -23,6 +23,9 @@ export class RouteName {
   static readonly ABOUT: string = 'B_About';
   static readonly SEARCH: string = 'B_Search';
   static readonly COMIC_VIEWER: string = 'C_ComicViewer';
+  // 陪伴档案与使用教程：登录页（首次体验）与设置页（编辑档案）共用同一对子页面
+  static readonly ONBOARDING_PROFILE: string = 'B_OnboardingProfile';
+  static readonly ONBOARDING_TUTORIAL: string = 'B_OnboardingTutorial';
 }
 
 class EmptyParam {

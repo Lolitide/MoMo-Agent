@@ -38,7 +38,7 @@ import { GardenController, CompanionService, TabController, HomeController, Shel
   DemoUIState, StateListener } from '../service/Services';
 import { DemoModeService } from '../service/DemoModeService';
 import { UserRepository, MemoryRepository, EventRepository, ComicRepository } from '../repository/Repositories';
-import { Memory, MemoryType, MoMoState, GardenMode, CheckInGuideStep, CheckInGuideState } from '../model/Models';
+import { Memory, MemoryType, MoMoState, GardenMode } from '../model/Models';
 import { AddSheetContent } from '../components/Sheets';
 import { DemoAIGateway } from '../service/ai/DemoAIGateway';
 import { PromptUtil } from '../utils/PromptUtil';
@@ -52,7 +52,7 @@ import { B_DailyComic } from './B_DailyComic';
 import { B_About } from './B_About';
 import { B_Search } from './B_Search';
 import { B_ComicViewer } from './B_ComicViewer';
-import { OnboardingService } from '../service/OnboardingService';
+import { OnboardingProfilePage } from './OnboardingProfilePage';
 
 @Entry
 @Component
@@ -61,13 +61,6 @@ struct MainPage {
   @State tab: number = 0;
   @State addOpen: boolean = false;
   @State userName: string = 'MoMo';
-  @State showGuide: boolean = false;
-  @State guideStep: CheckInGuideStep = CheckInGuideStep.PROFILE_REQUIRED;
-  @State guideError: string = '';
-  @State guideWorking: boolean = false;
-  private guideUserId: string = '';
-  private lastCheckInText: string = '';
-  private hasAppendedCheckIn: boolean = false;
   // 响应式花园模式（AppStorage 驱动，菜单随模式实时刷新）
   @StorageLink('gardenMode') gardenMode: number = 0;
   // 演示模式：影响标题栏文案、菜单标签与首次打卡引导的生成方式
@@ -93,11 +86,9 @@ struct MainPage {
     UserRepository.get().load().then((user) => {
       this.userName = user.name;
       this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
-      this.loadGuideState();
     }).catch(() => {
       this.userName = UserRepository.get().getUser().name;
       this.hi = DateUtil.greeting(new Date().getHours()) + '，' + this.userName;
-      this.loadGuideState();
     });
     TabController.switch = (index: number) => {
       this.tabsCtrl.changeIndex(index);
@@ -143,32 +134,6 @@ struct MainPage {
     this.isDemo = DemoModeService.get().isDemo();
   }
 
-  private async loadGuideState(): Promise<void> {
-    this.guideUserId = await OnboardingService.get().getCurrentUserId();
-    const state = await OnboardingService.get().loadGuide(this.guideUserId);
-    this.guideStep = state.currentStep;
-    if (this.guideStep === CheckInGuideStep.PROFILE_REQUIRED && UserRepository.get().getUser().profileCompleted) {
-      this.guideStep = CheckInGuideStep.CHECKIN_READY;
-      await this.setGuideStep(CheckInGuideStep.CHECKIN_READY);
-    }
-    this.lastCheckInText = await OnboardingService.get().loadPendingCheckIn(this.guideUserId);
-    // 首页首次引导只在档案完成后的准备态显示一次；记录后的流程不再占用首页空间。
-    this.showGuide = this.guideStep === CheckInGuideStep.CHECKIN_READY;
-    if ((this.guideStep === CheckInGuideStep.CHECKIN_INPUT || this.guideStep === CheckInGuideStep.SUMMARY_READY) &&
-      this.lastCheckInText) {
-      this.generateCheckInResult(this.lastCheckInText, !this.hasAppendedCheckIn);
-      this.hasAppendedCheckIn = true;
-    }
-  }
-
-  private async setGuideStep(step: CheckInGuideStep): Promise<void> {
-    this.guideStep = step;
-    const state = new CheckInGuideState();
-    state.currentStep = step;
-    state.completedAt = step === CheckInGuideStep.COMPLETED ? Date.now() : 0;
-    await OnboardingService.get().saveGuide(this.guideUserId, state);
-  }
-
   // 打开“记一笔”浮窗：花园 Tab 先收起详情；首页同时把默默切到倾听态（LISTENING）
   private openAdd(): void {
     if (this.tab === 1) {
@@ -177,14 +142,7 @@ struct MainPage {
     if (this.tab === 0) {
       CompanionService.get().setState(MoMoState.LISTENING);
     }
-    // 点击“+”即视为完成首次引导，提示立即消失并进入记录面板。
-    if (this.showGuide) {
-      this.showGuide = false;
-    }
     this.addOpen = true;
-    if (this.guideStep === CheckInGuideStep.CHECKIN_READY) {
-      this.setGuideStep(CheckInGuideStep.CHECKIN_INPUT);
-    }
   }
 
   private closeAdd(): void {
@@ -202,20 +160,15 @@ struct MainPage {
     m.tags = ['新记忆', '口述'];
     MemoryRepository.get().add(m);
     this.closeAdd();
-    this.lastCheckInText = text;
-    this.hasAppendedCheckIn = true;
-    OnboardingService.get().savePendingCheckIn(this.guideUserId, text);
     this.generateCheckInResult(text);
   }
 
+  // 记录一条口述后：追加到今日事件，生成每日总结与漫画并回填仓库
   private async generateCheckInResult(text: string, append: boolean = true): Promise<void> {
-    this.guideError = '';
-    this.guideWorking = true;
     try {
       const daily = append ? await EventRepository.get().appendCheckIn(text) : await EventRepository.get().getToday();
-      await this.setGuideStep(CheckInGuideStep.SUMMARY_READY);
       const profile = UserRepository.get().getUser().profile;
-      // 经网关分流：演示态秒回预制内容，真实态走云端并在失败时降级（不阻断引导）
+      // 经网关分流：演示态秒回预制内容，真实态走云端并在失败时降级（不中断记录流程）
       const summary = await DemoAIGateway.dailySummary(daily.events, profile.tone);
       const comic = await DemoAIGateway.comic(summary, daily.events, profile);
       if (!comic || comic.pages.length === 0) {
@@ -224,33 +177,10 @@ struct MainPage {
       EventRepository.get().updateTodaySummary(summary, daily.events);
       // 回填到仓库，使首页卡片与今日漫画页读到同一份结果
       ComicRepository.get().setGeneratedComic(comic);
-      await this.setGuideStep(CheckInGuideStep.COMIC_READY);
-      await OnboardingService.get().clearPendingCheckIn(this.guideUserId);
       PromptUtil.toast('今天的总结和漫画已经准备好了');
     } catch (err) {
-      this.guideError = '云端生成没有完成，请检查网络后重试';
-      PromptUtil.toast(this.guideError);
-    } finally {
-      this.guideWorking = false;
+      PromptUtil.toast('云端生成没有完成，请检查网络后重试');
     }
-  }
-
-  private retryCheckIn(): void {
-    if (this.lastCheckInText) {
-      this.generateCheckInResult(this.lastCheckInText, !this.hasAppendedCheckIn);
-      this.hasAppendedCheckIn = true;
-    }
-  }
-
-  private openGuideComic(): void {
-    this.setGuideStep(CheckInGuideStep.GARDEN_SEEDED);
-    AppRouter.push(RouteName.DAILY_COMIC);
-  }
-
-  private openGuideGarden(): void {
-    this.showGuide = false;
-    this.setGuideStep(CheckInGuideStep.COMPLETED);
-    TabController.switch(1);
   }
 
   private currentTitle(): string {
@@ -322,6 +252,14 @@ struct MainPage {
       B_Search()
     } else if (name === 'C_ComicViewer') {
       B_ComicViewer()
+    } else if (name === RouteName.ONBOARDING_PROFILE) {
+      // 设置页进入的档案编辑：不接教程页，保存后直接返回
+      OnboardingProfilePage({
+        isFirstRun: false,
+        onFinish: () => {
+          AppRouter.back();
+        }
+      })
     }
   }
 
@@ -350,30 +288,6 @@ struct MainPage {
   @Builder
   miniBarBuilder() {
     Stack() {
-      if (this.showGuide && this.tab === 0) {
-        Column({ space: 4 }) {
-          Text('点击“+”，和默默说一句今天的事')
-            .fontSize(Theme.fontSize(12))
-            .fontColor(Theme.PRIMARY)
-            .textAlign(TextAlign.Center)
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-          SymbolGlyph($r('sys.symbol.chevron_down'))
-            .fontSize(Theme.fontSize(14))
-            .fontColor([Theme.BRAND_DEEP])
-        }
-        .width(190)
-        .position({ x: -67, y: -76 })
-        .hitTestBehavior(HitTestMode.Transparent)
-
-        Column()
-          .width(68)
-          .height(68)
-          .borderRadius(34)
-          .border({ width: 2, color: Theme.BRAND_DEEP })
-          .shadow({ radius: 12, color: '#5533C56E', offsetX: 0, offsetY: 0 })
-          .hitTestBehavior(HitTestMode.Transparent)
-      }
       SymbolGlyph($r('sys.symbol.plus'))
         .fontSize(Theme.fontSize(24))
         .fontColor(['#6FDF8E'])
@@ -433,10 +347,6 @@ struct MainPage {
         .animationDuration(0)
         .onChange((index: number) => {
           this.tab = index;
-          if (index === 1 && this.guideStep === CheckInGuideStep.GARDEN_SEEDED) {
-            this.showGuide = false;
-            this.setGuideStep(CheckInGuideStep.COMPLETED);
-          }
           if (index === 0) {
             CompanionService.get().setState(MoMoState.IDLE);
           } else {
