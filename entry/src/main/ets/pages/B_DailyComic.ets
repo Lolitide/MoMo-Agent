@@ -175,7 +175,9 @@ export struct B_DailyComic {
             .width('100%')
             .height('100%')
             .borderRadius(26)
-            .objectFit(ImageFit.Cover)
+            // 演示态用的是 comic_demo_1..4 那组横版图（约 3:2），Cover 会把左右两侧的
+            // 台词框裁掉，所以演示态改用 Contain；普通模式仍是竖版图，维持 Cover 铺满。
+            .objectFit(this.isDemo ? ImageFit.Contain : ImageFit.Cover)
             // 共享元素转场起点：点击后直接“飞”进全屏查看页
             .sharedTransition('comicViewer', { duration: 340, curve: Curve.EaseOut })
         }
@@ -188,7 +190,9 @@ export struct B_DailyComic {
       }, (p: ComicPage) => p.index.toString())
     }
     .width('100%')
-    .height(400)
+    // 高度跟着图的比例走：横版演示图按宽度算约 184vp 高，留一点余量取 210；
+    // 竖版图继续用 400 的展示窗口。
+    .height(this.isDemo ? 210 : 400)
     .itemSpace(14)
     .displayCount(1.22)
     .indicator(false)

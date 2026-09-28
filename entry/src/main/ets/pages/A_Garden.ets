@@ -711,7 +711,7 @@ export struct A_Garden {
             .alignItems(VerticalAlign.Top)
             .padding({ right: 20 })
             .margin({ bottom: 14 })
-          }, (m: Memory) => m.id)
+          }, (m: Memory) => `${m.id}-${m.date}-${m.title}`)
           // 底部只留出悬浮 Tab 栏的高度（栏本身 56vp + 下边距 28vp + 渐变光罩 ≈ 120vp）
           Blank().height(120)
         }
@@ -1041,7 +1041,7 @@ export struct A_Garden {
                   this.searchOpen = false;
                   this.searchText = '';
                 })
-              }, (m: Memory) => m.id)
+              }, (m: Memory) => `${m.id}-${m.date}-${m.title}`)
             }
             .width('100%')
             .padding({ left: 12, right: 12, top: 6, bottom: 6 })

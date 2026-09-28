@@ -163,7 +163,7 @@ export struct B_Search {
                 Column() {
                   ForEach(this.results(), (m: Memory) => {
                     this.resultItem(m)
-                  }, (m: Memory) => m.id)
+                  }, (m: Memory) => `${m.id}-${m.date}-${m.title}`)
                   Blank().height(30)
                 }
                 .width('100%')
