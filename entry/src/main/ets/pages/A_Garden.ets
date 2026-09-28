@@ -653,11 +653,15 @@ export struct A_Garden {
                     .fontColor(this.selectedMemory !== null && this.selectedMemory.id === m.id
                       ? '#3FA55F' : Theme.SECONDARY)
                   Blank()
+                  // 与花园气泡同色系：浅底用 bubbleBgOf（主色与白 86% 混合），
+                  // 文字用 iconColorOf（主色压暗），保证同一个 base 派生出的明度关系一致。
+                  // 注意不要写成 colorOf + '22'：ArkUI 的 8 位十六进制是 #AARRGGBB，
+                  // 拼在尾巴上的两字符会被当成蓝色通道、同时把色值当成 alpha。
                   Text(MemoryTypeUtil.nameOf(m.type))
                     .fontSize(Theme.fontSize(10))
-                    .fontColor(MemoryTypeUtil.colorOf(m.type))
+                    .fontColor(MemoryTypeUtil.iconColorOf(m.type))
                     .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-                    .backgroundColor(MemoryTypeUtil.colorOf(m.type) + '22')
+                    .backgroundColor(MemoryTypeUtil.bubbleBgOf(m.type))
                     .borderRadius(9)
                 }
                 .width('100%')
